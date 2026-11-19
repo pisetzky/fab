@@ -42,6 +42,10 @@ prepare_project() {
 
 case "$CHOICE" in
   0)
+    if [ ! -f "$HERE/Mac/ChordPilot-Mac.pkg" ] && [ -f "$HERE/Mac/ChordPilot-Mac.dmg" ]; then
+      MNT=$(hdiutil attach -nobrowse "$HERE/Mac/ChordPilot-Mac.dmg" | tail -1 | awk -F'\t' '{print $NF}')
+      cp "$MNT/Installa ChordPilot (tutto).pkg" "$HERE/Mac/ChordPilot-Mac.pkg" && hdiutil detach "$MNT" >/dev/null
+    fi
     if [ -f "$HERE/Mac/ChordPilot-Mac.pkg" ]; then
       echo "  Installo VST3, Audio Unit e app Standalone (serve la password del Mac)…"
       sudo installer -pkg "$HERE/Mac/ChordPilot-Mac.pkg" -target / && echo "  ✅ Installato sul Mac."

@@ -10,7 +10,7 @@ I segnaposto da completare sono scritti così: **[TUO NOME / AZIENDA]**, **[EMAI
 | iPad / iPhone (web) | `ChordPilot.html` – si aggiunge alla Home | ✅ pronto (pubblicabile su qualsiasi hosting) |
 | Linux | VST3 + Standalone | ✅ compilato |
 | iPad (app nativa) | App + plug-in AUv3 (strumento e MIDI FX) | 🛠 codice completo, da compilare con Xcode e firmare |
-| Mac (Intel + Apple Silicon) | VST3 + AU + Standalone, installer `.pkg` con scelta componenti | 🛠 compilazione automatica (GitHub Actions) |
+| Mac (Intel + Apple Silicon) | VST3 + AU + Standalone: immagine disco `.dmg` (app da trascinare + installer `.pkg` con scelta componenti) | 🛠 compilazione automatica (GitHub Actions) |
 | Windows | VST3 + Standalone, installer `.exe` con scelta componenti | 🛠 compilazione automatica (GitHub Actions) |
 
 Funzioni incluse in tutte le versioni: 23 generi, 10 pianoforti, suggerimento accordi e note,

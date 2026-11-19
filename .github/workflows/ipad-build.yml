@@ -52,6 +52,8 @@ jobs:
           ./build/Release/ChordPilotEngineTests
       - name: Installer .pkg
         run: Desktop/Installer/make-mac-pkg.sh Desktop/build/ChordPilot_artefacts/Release out
+      - name: Disk image .dmg
+        run: Desktop/Installer/make-mac-dmg.sh Desktop/build/ChordPilot_artefacts/Release out out
       - uses: actions/upload-artifact@v4
         with: { name: mac, path: out }
 
