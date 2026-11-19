@@ -91,6 +91,16 @@ private:
 };
 
 Chord adjust(const Chord& c, int complexity);
+// ---- Pro options (inspired by Scaler, Captain Chords, InstaChord/Cthulhu) ----
+extern const char* const kVoicingStyles[5];   // Automatico, Stretto, Aperto, Drop 2, Largo
+struct OneFingerChord { int root; int quality; std::vector<int> tones; };
+/// One-finger chords: the chord of the scale on each pitch class (black keys: richer nearest lower degree).
+std::vector<OneFingerChord> oneFingerTable(const Engine& e);
+/// Closest scale note (ties go down).
+int lockToScale(const Engine& e, int note);
+/// Chord tones stacked on `rootNote` in a voicing style (1 Stretto, 2 Aperto, 3 Drop 2, 4 Largo) + bass. RT-safe.
+int styleVoicing(const int* tones, int numTones, int root, int rootNote, int style, int* out);
+
 /// Chord tones voiced just below `melody` plus the root in the bass. Allocation-free (real-time safe).
 int geniusVoicing(const int* tones, int numTones, int root, int melody, int* out);
 Key progressionKey(const Genre& g, const Key& k);
@@ -117,5 +127,12 @@ struct Rng {
 
 /// arp: -1 = genre rhythm, 0..29 = arpeggio; melody: -1 = none, 0..29; seed = song variation.
 Pattern buildPattern(const Genre& g, const Key& k, int progIndex, int complexity, int arp = -1, int melody = -1, int seed = 0);
+
+// ---- Inspiration: 10 melodies that follow a recorded track ----
+struct RecordedNote { int step; int note; int vel; int len; };   // 16th-note steps
+struct InspireOption { std::string name; std::vector<PatternEvent> events; };
+struct InspireResult { Key key; std::vector<Chord> chords; std::vector<InspireOption> options; };
+extern const char* const kInspireNames[10];
+InspireResult inspire(const Genre& g, const std::vector<RecordedNote>& rec, int total, std::optional<Key> fixedKey = std::nullopt, int seed = 0);
 
 } // namespace cp

@@ -113,7 +113,9 @@ public final class ChordPilotController: ObservableObject {
         let idx = Int(k.patternChordIndex)
         if idx != patternChordIndex { patternChordIndex = idx }
 
+        checkInspirationEnd()
         if h != held {
+            recordInspiration(added: h.subtracting(held), removed: held.subtracting(h))
             held = h
             chordStableSince = Date()
             recompute()
@@ -191,6 +193,109 @@ public final class ChordPilotController: ObservableObject {
     public func setMelody(_ i: Int) { audioUnit?.set(.melody, AUValue(i + 1)) }
     public func setGenius(_ on: Bool) { audioUnit?.set(.genius, on ? 1 : 0) }
     public func newSong() { audioUnit?.newSong() }
+
+    // MARK: Inspiration
+
+    @Published public private(set) var inspireStatus = "Premi Registra e suona (o fai partire la traccia nella DAW): parte dalla prima nota."
+    @Published public private(set) var inspireOptions: [InspirationOption] = []
+    @Published public private(set) var inspireRecording = false
+    private var inspireStart: Date?
+    private var inspireTotal = 64
+    private var inspireOpen: [Int: (step: Int, vel: Int)] = [:]
+    private var inspireNotes: [RecordedNote] = []
+    private var inspireSource: [RecordedNote] = []
+    private var inspireChords: [Chord] = []
+
+    public func startInspiration(bars: Int) {
+        inspireTotal = bars * 16; inspireStart = nil; inspireOpen = [:]; inspireNotes = []; inspireRecording = true
+        inspireStatus = "⏺ In attesa della prima nota (\(bars) battute a \(Int(bpm)) BPM)…"
+    }
+
+    public func inspirationFromPlayer() {
+        guard let p = audioUnit?.currentPattern else { return }
+        var rec: [RecordedNote] = []
+        var open: [Int: PatternEvent] = [:]
+        for e in p.events {
+            let k = Int(e.lane) * 1000 + Int(e.note)
+            if e.velocity > 0 { open[k] = e }
+            else if let o = open.removeValue(forKey: k) {
+                rec.append(RecordedNote(step: o.step, note: Int(o.note), velocity: Int(o.velocity), length: max(1, (e.step == 0 ? p.totalSteps : e.step) - o.step)))
+            }
+        }
+        inspireTotal = p.totalSteps
+        analyseInspiration(rec)
+    }
+
+    private func inspirationStep() -> Int {
+        guard let t0 = inspireStart else { return 0 }
+        return Int((Date().timeIntervalSince(t0) / (60.0 / max(20, bpm) / 4.0)).rounded())
+    }
+
+    private func recordInspiration(added: Set<Int>, removed: Set<Int>) {
+        guard inspireRecording, let k = audioUnit?.kernel else { return }
+        if inspireStart == nil { guard !added.isEmpty else { return }; inspireStart = Date() }
+        let step = inspirationStep()
+        for n in removed { if let o = inspireOpen.removeValue(forKey: n) { inspireNotes.append(RecordedNote(step: o.step, note: n, velocity: o.vel, length: max(1, min(step, inspireTotal) - o.step))) } }
+        if step < inspireTotal { for n in added { inspireOpen[n] = (step, Int(k.heldNotes[n])) } }
+    }
+
+    private func checkInspirationEnd() {
+        guard inspireRecording, inspireStart != nil else { return }
+        let step = inspirationStep()
+        inspireStatus = "⏺ Battuta \(min(inspireTotal / 16, step / 16 + 1)) di \(inspireTotal / 16)…"
+        guard step >= inspireTotal else { return }
+        inspireRecording = false
+        for (n, o) in inspireOpen { inspireNotes.append(RecordedNote(step: o.step, note: n, velocity: o.vel, length: max(1, inspireTotal - o.step))) }
+        inspireOpen = [:]
+        if inspireNotes.isEmpty { inspireStatus = "Nessuna nota registrata: riprova." } else { analyseInspiration(inspireNotes) }
+    }
+
+    private func analyseInspiration(_ rec: [RecordedNote]) {
+        inspireSource = rec
+        let r = Inspiration.suggest(genre: genre, recorded: rec, totalSteps: inspireTotal, fixedKey: engine.fixedKey)
+        inspireChords = r.chords
+        inspireOptions = r.options
+        inspireStatus = "Traccia in \(noteName(r.key.tonic, flats: r.key.prefersFlats))\(r.key.isMinor ? " minore" : " maggiore") · accordi "
+            + r.chords.map { chordName($0) }.joined(separator: " – ")
+    }
+
+    private func inspirationPattern(_ i: Int) -> GenrePattern? {
+        guard i < inspireOptions.count else { return nil }
+        var ev: [PatternEvent] = []
+        for n in inspireSource {
+            let end = n.step + n.length
+            ev.append(PatternEvent(step: n.step, note: UInt8(n.note), velocity: UInt8(max(1, n.velocity)), lane: 0))
+            ev.append(PatternEvent(step: end >= inspireTotal ? 0 : end, note: UInt8(n.note), velocity: 0, lane: 0))
+        }
+        ev += inspireOptions[i].events
+        ev = ev.enumerated().sorted { a, b in
+            if a.element.step != b.element.step { return a.element.step < b.element.step }
+            let ao = a.element.velocity == 0, bo = b.element.velocity == 0
+            return ao != bo ? ao : a.offset < b.offset
+        }.map { $0.element }
+        return GenrePattern(events: ev, totalSteps: inspireTotal, chords: inspireChords, bpm: bpm)
+    }
+
+    public func playInspiration(_ i: Int) { if let p = inspirationPattern(i) { audioUnit?.playCustom(p) } }
+
+    public func exportInspiration(_ i: Int) -> URL? {
+        guard let p = inspirationPattern(i) else { return nil }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ChordPilot-ispirazione-\(i + 1).mid")
+        do { try MidiExport.data(pattern: p, bpm: bpm, loops: 4).write(to: url); return url } catch { return nil }
+    }
+
+    // Pro options
+    public func proValue(_ a: ParamAddress) -> Double { Double(audioUnit?.parameterValue(a) ?? 0) }
+    public func setPro(_ a: ParamAddress, _ v: Double) { audioUnit?.set(a, AUValue(v)); objectWillChange.send() }
+
+    /// Writes the current genre-player song (4 loops) as a MIDI file and returns its URL for sharing.
+    public func exportMIDI() -> URL? {
+        guard let au = audioUnit, let p = au.currentPattern else { return nil }
+        let data = MidiExport.data(pattern: p, bpm: Double(au.parameterValue(.bpm)), loops: 4)
+        let name = "ChordPilot-\(genre.id)\(arpeggio >= 0 ? "-arp\(arpeggio + 1)" : "")\(melody >= 0 ? "-mel\(melody + 1)" : "").mid"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        do { try data.write(to: url); return url } catch { return nil }
+    }
     public func setPiano(_ m: PianoModel) { audioUnit?.set(.piano, AUValue(PianoModel.all.firstIndex(of: m) ?? 0)) }
     public func resetContext() { engine.reset(); lastCommitted = nil; recompute() }
 

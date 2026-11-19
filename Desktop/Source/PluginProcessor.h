@@ -53,6 +53,15 @@ public:
     void playChord(const std::vector<int>& notes, bool on); // tapped suggestion (sent on MIDI channel 16)
     void newSong();                                         // random progression + arpeggio + melody + variation
 
+    // ---- Inspiration: record the track (MIDI the plug-in receives), then suggest 10 melodies ----
+    std::atomic<int> inspireState { 0 };                    // 0 idle, 1 armed, 2 recording, 3 done
+    int inspireBars = 4;
+    juce::AbstractFifo inspireFifo { 4096 };                // audio → editor: packed (on, note, vel, step)
+    std::array<juce::int64, 4096> inspireFifoData {};
+    void armInspiration(int bars) { inspireBars = bars; inspireState = 1; }
+    /// Plays a ready-made loop (track + suggested melody) with the genre player until a setting changes.
+    void playCustom(std::shared_ptr<const cp::Pattern> p);
+
     /// Genius mode lookup for one pitch class (built on the message thread, read by the audio thread).
     struct GeniusEntry { int shift = 0; int root = 0; int quality = 0; int tones[6] {}; int numTones = 0; };
     using GeniusTable = std::array<GeniusEntry, 12>;
@@ -66,6 +75,20 @@ private:
     void handleInput(const juce::MidiMessage& m, int offset, juce::MidiBuffer& out);
     void geniusChordOff(int offset, juce::MidiBuffer& out);
     void rebuildGeniusTable();
+    void enqueue(long long due, juce::uint8 st, int note, int vel, bool fromPattern);
+    int nextDelayedOffset(int done, int n) const;
+    void runDelayed(int offset, juce::MidiBuffer& out);
+    int humanVel(int v);
+    long long humanDelay();
+
+    // Pro options: delayed-event queue (strum, humanize, swing), one-finger chords, scale lock
+    struct Delayed { long long due; juce::uint8 st; juce::uint8 note; juce::uint8 vel; bool pattern; bool active; };
+    std::array<Delayed, 1024> delayed {};
+    struct OneFingerEntry { int root = 0; int tones[6] {}; int numTones = 0; int lockShift = 0; };
+    using OneFingerTable = std::array<OneFingerEntry, 12>;
+    std::shared_ptr<const OneFingerTable> oneFinger;        // swapped atomically
+    std::array<std::array<int, 10>, 128> oneFingerHeld {};  // pressed key → chord notes (count in [0])
+    juce::Random rng;
 
     // Genius mode
     cp::Engine geniusEngine;                                // message thread
@@ -76,6 +99,8 @@ private:
     int geniusNotes[8] {}; int geniusCount = 0; int geniusTones[6] {}; int geniusNumTones = 0;
     long long geniusChangedAt = -1000000, lastNoteAt = 0, sampleClock = 0;
     bool geniusChordOn = false;
+    double inspireStartPpq = -1; long long inspireStartSample = -1;
+    void recordForInspiration(const juce::MidiMessage& m, int offset, bool hostMoving, double blockPpq, double samplesPerBeat);
     int lastGeniusGenre = -1, geniusDirty = 1;
 
     PianoSynth synth;

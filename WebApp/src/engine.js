@@ -352,8 +352,15 @@ const CP = (() => {
         m = c; break;
       }
       const pc = mod12(m);
-      let ch = (ctx.chords.find(s => pcs(s.chord).has(pc)) || {}).chord;
-      if (!ch) { const r = this.suggest([m]); ch = r.chords[0] ? r.chords[0].chord : chord(k.tonic, k.minor ? "minor" : "major"); }
+      // Every note gets its own chord: the best next chord of the progression that contains the note,
+      // never the chord just played.
+      const last = this.history[this.history.length - 1];
+      const fresh = s => pcs(s.chord).has(pc) && !(last && loose(s.chord, last));
+      let pick = ctx.chords.find(fresh);
+      if (!pick) pick = this.suggest([m]).chords.find(fresh);
+      if (!pick) pick = ctx.chords.find(s => pcs(s.chord).has(pc));
+      let ch = pick ? pick.chord : chord(k.tonic, k.minor ? "minor" : "major");
+      if (RICH_GENRES.has(this.genre.id) && this.complexity >= 1) ch = adjust(ch, 2);   // 7ths / 9ths
       return { note: m, chord: ch, shift: m - note };
     }
     /// Table for the 12 pitch classes (used by the real-time engines, recomputed as the song moves on).
@@ -574,20 +581,217 @@ const CP = (() => {
     return { events, total, chords, spc };
   }
 
-  /// Chord voiced just below the melody note, with the root in the bass.
-  function geniusVoicing(c, melody) {
-    const out = [];
-    const tones = [...new Set(Q[c.quality].iv.map(i => mod12(c.root + i)))];
-    for (const pc of tones) {
-      let n = melody - 2; while (mod12(n) !== pc) n--;
-      if (n >= melody - 14 && n >= 28) out.push(n);
-    }
-    let b = melody - 17; while (mod12(b) !== c.root) b--;
-    if (b >= 24) out.push(b);
-    return [...new Set(out)].sort((x, y) => x - y);
+  // ---------- Pro options (inspired by Scaler, Captain Chords, InstaChord/Cthulhu) ----------
+  const VOICING_STYLES = ["Automatico", "Stretto", "Aperto", "Drop 2", "Largo"];
+
+  /// One-finger chords: the chord of the key's scale built on the pressed note (black keys = a richer
+  /// version of the nearest lower degree). Returns { root, tones } for each of the 12 pitch classes.
+  function oneFingerTable(engine) {
+    const k = engine.currentKey, st = scaleFor(engine.genre, k);
+    const chords = diatonic(k, st, engine.complexity);
+    return [...Array(12)].map((_, pc) => {
+      let c = chords.find(x => x.root === pc);
+      if (!c) {
+        const lower = chords.filter(x => mod12(pc - x.root) <= 2).sort((a, b) => mod12(pc - a.root) - mod12(pc - b.root))[0] || chords[0];
+        c = adjust(lower, 2);  // richer colour (7th / 9th)
+      }
+      return { root: c.root, quality: c.quality, tones: [...new Set(Q[c.quality].iv.map(i => mod12(c.root + i)))] };
+    });
   }
 
-  return { geniusVoicing, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
+  /// Voices chord tones on top of `rootNote` in the chosen style (1 Stretto, 2 Aperto, 3 Drop 2, 4 Largo).
+  function styleVoicing(tones, root, rootNote, style) {
+    let r = rootNote; while (mod12(r) !== root) r--;
+    const order = [root].concat(tones.filter(t => t !== root));
+    const notes = []; let last = r - 1;
+    for (const t of order) { let n = last + 1; while (mod12(n) !== t) n++; notes.push(n); last = n; }
+    if (style === 2 && notes.length >= 3) notes[1] += 12;
+    if (style === 3 && notes.length >= 4) { const i = notes.length - 2; notes[i] -= 12; }
+    if (style === 4) { for (let i = 1; i < notes.length; i++) notes[i] += 12; }
+    notes.push(r - 12);                     // bass
+    return [...new Set(notes)].filter(n => n >= 21 && n <= 108).sort((a, b) => a - b);
+  }
+
+  /// Scale lock: closest note of the current scale (ties go down).
+  function lockToScale(engine, note) {
+    const k = engine.currentKey, sc = scaleSet(k, scaleFor(engine.genre, k));
+    for (const d of [0, -1, 1, -2, 2]) if (sc.has(mod12(note + d))) return note + d;
+    return note;
+  }
+
+  /// Standard MIDI file (type 1): track 1 accompaniment (ch 1), track 2 melody (ch 2). `loops` repetitions.
+  function patternToMidi(pattern, bpm, loops = 4) {
+    const ppq = 480, perStep = ppq / 4;
+    const vlq = v => { const b = [v & 0x7f]; while ((v >>= 7)) b.unshift((v & 0x7f) | 0x80); return b; };
+    const track = (lane, ch, withTempo) => {
+      const ev = [];
+      for (let l = 0; l < loops; l++) for (const e of pattern.events) if ((e.lane || 0) === lane) {
+        let step = e.step + l * pattern.total;
+        if (e.vel === 0 && e.step === 0) step = (l + 1) * pattern.total;   // wrap-around note-off
+        ev.push([step * perStep, e.vel ? 0x90 | ch : 0x80 | ch, e.note, e.vel]);
+      }
+      ev.sort((a, b) => a[0] - b[0] || (a[1] & 0xf0) - (b[1] & 0xf0));
+      const out = [];
+      if (withTempo) { const us = Math.round(60000000 / bpm); out.push(0, 0xff, 0x51, 3, (us >> 16) & 255, (us >> 8) & 255, us & 255); }
+      let t = 0;
+      for (const [tick, st, n, v] of ev) { out.push(...vlq(tick - t), st, n, v); t = tick; }
+      out.push(0, 0xff, 0x2f, 0);
+      return [0x4d,0x54,0x72,0x6b, (out.length >>> 24) & 255, (out.length >> 16) & 255, (out.length >> 8) & 255, out.length & 255, ...out];
+    };
+    const header = [0x4d,0x54,0x68,0x64, 0,0,0,6, 0,1, 0,2, (ppq >> 8) & 255, ppq & 255];
+    return new Uint8Array([...header, ...track(0, 0, true), ...track(1, 1, false)]);
+  }
+
+  // ---------- Inspiration: 10 melodies that follow a recorded track ----------
+  const INSPIRE_NAMES = ["Contrappunto", "Contrappunto II", "Armonia in terza", "Armonia in sesta", "Risposta",
+    "Eco del motivo", "Hook", "Hook II", "Note guida", "Arpeggio melodico"];
+
+  /// rec: [{step, note, vel, len}] in 16th steps; total = loop length in steps (multiple of 16).
+  function analyzeTrack(genre, rec, total, fixedKey = null) {
+    const bars = Math.max(1, Math.ceil(total / 16));
+    const hist = Array(12).fill(0);
+    rec.forEach(n => hist[mod12(n.note)] += Math.max(1, n.len));
+    const key = fixedKey || detectKey(hist, genre.prefersMinor ? .04 : -.02) || { tonic: genre.defaultTonic, minor: genre.prefersMinor };
+    const st = scaleFor(genre, key), scale = scaleSet(key, st), pk = progressionKey(genre, key);
+    const pool = diatonic(key, st, 1);
+    genre.progressions.forEach(p => p.chords.forEach(rc => { const c = romanChord(rc, pk); if (!pool.some(x => key_(x) === key_(c))) pool.push(c); }));
+    const chords = []; let prev = chord(key.tonic, key.minor ? "minor" : "major");
+    for (let b = 0; b < bars; b++) {
+      const w = Array(12).fill(0); let low = 999;
+      for (const n of rec) {
+        const ov = Math.min(n.step + n.len, (b + 1) * 16) - Math.max(n.step, b * 16);
+        if (ov > 0) { w[mod12(n.note)] += ov; low = Math.min(low, n.note); }
+      }
+      if (w.every(x => x === 0)) { chords.push(prev); continue; }
+      let best = prev, bs = -1e9;
+      for (const c of pool) {
+        const cp = pcs(c); let sc = 0;
+        w.forEach((x, pc) => sc += cp.has(pc) ? x : -0.5 * x);
+        if (low < 999 && mod12(low) === c.root) sc += 2;
+        if (sc > bs) { bs = sc; best = c; }
+      }
+      chords.push(best); prev = best;
+    }
+    // top line: highest note starting at each step
+    const top = Array(total).fill(null);
+    rec.forEach(n => { if (n.step < total && (!top[n.step] || n.note > top[n.step].note)) top[n.step] = n; });
+    const onsets = Array(total).fill(false); rec.forEach(n => { if (n.step < total) onsets[n.step] = true; });
+    const tops = top.filter(Boolean).map(n => n.note).sort((a, b) => a - b);
+    const median = tops.length ? tops[Math.floor(tops.length / 2)] : genre.octave + 7;
+    return { key, scale, st, chords, top, onsets, median, total, pk };
+  }
+  const key_ = c => c.root + ":" + c.quality;
+
+  function inspire(genre, rec, total, fixedKey = null, seed = 0) {
+    const A = analyzeTrack(genre, rec, total, fixedKey);
+    const gi = GENRES.indexOf(genre);
+    const center = A.median < 60 ? A.median + 12 : A.median + 3;
+    const lo = center - 9, hi = center + 12;
+    const notes = []; for (let n = lo; n <= hi; n++) if (A.scale.has(mod12(n))) notes.push(n);
+    const near = (n, set) => { let b = n, d = 99; for (const m of notes) if (set.has(mod12(m)) && Math.abs(m - n) < d) { d = Math.abs(m - n); b = m; } return b; };
+    const stepScale = (n, k) => { let i = notes.indexOf(near(n, A.scale)); i = Math.max(0, Math.min(notes.length - 1, i + k)); return notes[i]; };
+    const chordAt = s => pcs(A.chords[Math.min(A.chords.length - 1, Math.floor(s / 16))]);
+    const srcLine = A.top.map((n, s) => n ? { s, note: n.note, len: n.len } : null).filter(Boolean);
+    const out = [];
+    const pool = rhythmPool(genre.id);
+    for (let opt = 0; opt < 10; opt++) {
+      const R = rng((songSeed(gi, 40 + opt, opt, seed) ^ (rec.length * 2654435761)) >>> 0);
+      const mel = [];   // {step, note, len, vel}
+      const push = (step, note, len, vel = 90) => { if (step < total && note >= 21 && note <= 108) mel.push({ step, note, len: Math.max(1, Math.min(len, total - step)), vel }); };
+      if (opt <= 1) {                       // counterpoint: fills the gaps, contrary motion
+        const rh = pool[(R(pool.length) + opt * 5) % pool.length];
+        let n = near(center, chordAt(0)), lastSrc = null;
+        for (let s = 0; s < total; s++) {
+          if (rh[s % 16] !== "x") continue;
+          if (A.onsets[s] && s % 4 !== 0 && R(3) !== 0) continue;
+          let e = s + 1; while (e < total && rh[e % 16] === "-") e++;
+          const src = A.top[s];
+          if (src && lastSrc !== null) n = stepScale(n, src.note > lastSrc ? -1 - R(2) : src.note < lastSrc ? 1 + R(2) : (R(2) ? 1 : -1));
+          else n = stepScale(n, R(3) - 1);
+          if (src) lastSrc = src.note;
+          if (s % 8 === 0) n = near(n, chordAt(s));
+          if (src && [1, 2].includes(Math.abs(n - src.note) % 12)) n = near(n + 3, chordAt(s));
+          push(s, n, e - s, s % 4 === 0 ? 96 : 82);
+        }
+      } else if (opt <= 3) {                // parallel harmony a third / a sixth above the track's top line
+        const k = opt === 2 ? 2 : 5;
+        for (const x of srcLine) {
+          let n = x.note; for (let i = 0; i < k; i++) { n++; while (!A.scale.has(mod12(n))) n++; }
+          while (n > hi + 5) n -= 12; while (n < lo) n += 12;
+          push(x.s, n, x.len, 84);
+        }
+      } else if (opt === 4) {               // call & response: answers in the half-bars where the track rests
+        for (let w = 0; w < total; w += 8) {
+          const busy = A.onsets.slice(w, w + 8).some(Boolean);
+          if (busy && !(w % 16 === 8 && R(2) === 0)) continue;
+          const motif = srcLine.filter(x => x.s >= w - 8 && x.s < w).map(x => ({ off: x.s - (w - 8), note: x.note, len: x.len }));
+          if (motif.length) motif.forEach(m => push(w + m.off, near(stepScale(m.note, 2) + (m.note < lo ? 12 : 0), chordAt(w + m.off)), Math.min(m.len, 8 - m.off), 86));
+          else { let n = near(center, chordAt(w)); [0, 2, 4, 6].forEach(o => { push(w + o, n, 2, 84); n = stepScale(n, R(3) - 1); }); }
+        }
+      } else if (opt === 5) {               // echo: the track's motif an eighth later and an octave up
+        for (const x of srcLine) {
+          let n = x.note + 12; while (n > hi + 5) n -= 12; while (n < lo) n += 12;
+          push(x.s + 2, near(n, A.scale), Math.max(1, x.len - 1), 72);
+        }
+      } else if (opt <= 7) {                // hook built on the track's own chords
+        const ev = melodyEvents(genre, gi, A.key, A.chords, -1, (opt * 7 + R(30)) % MELODY_COUNT, seed + opt, 16);
+        const ons = ev.filter(e => e.vel > 0);
+        ons.forEach(e => {
+          const off = ev.find(o => o.vel === 0 && o.note === e.note && (o.step > e.step || o.step === 0));
+          const len = off ? ((off.step === 0 ? total : off.step) - e.step) : 2;
+          push(e.step, e.note, len, e.vel);
+        });
+      } else if (opt === 8) {               // guide tones: 3rds and 7ths, half notes, smooth voice-leading
+        let n = center;
+        for (let s = 0; s < total; s += 8) {
+          const c = A.chords[Math.min(A.chords.length - 1, Math.floor(s / 16))], iv = Q[c.quality].iv;
+          const guide = new Set([mod12(c.root + iv[1]), mod12(c.root + (iv[3] ?? iv[2]))]);
+          n = near(n, guide); push(s, n, 8, 80);
+        }
+      } else {                              // melodic arpeggio in eighths
+        for (let s = 0; s < total; s += 2) {
+          const c = A.chords[Math.min(A.chords.length - 1, Math.floor(s / 16))];
+          const tones = notes.filter(m => pcs(c).has(mod12(m)) && m >= center - 3 && m <= center + 10);
+          if (!tones.length) continue;
+          const i = Math.floor(s / 2) % (tones.length * 2 - 1 || 1);
+          const idx = i < tones.length ? i : tones.length * 2 - 2 - i;
+          push(s, tones[Math.max(0, idx)], 2, s % 4 === 0 ? 88 : 74);
+        }
+      }
+      // remove overlaps (monophonic line) and build events
+      mel.sort((a, b) => a.step - b.step);
+      const events = [];
+      mel.forEach((m, i) => {
+        const next = mel[i + 1];
+        let end = m.step + m.len; if (next && next.step < end) end = next.step;
+        if (end <= m.step) return;
+        events.push({ step: m.step, note: m.note, vel: m.vel, lane: 1 }, { step: end >= total ? 0 : end, note: m.note, vel: 0, lane: 1 });
+      });
+      events.sort((a, b) => a.step === b.step ? ((a.vel === 0) === (b.vel === 0) ? 0 : a.vel === 0 ? -1 : 1) : a.step - b.step);
+      out.push({ name: INSPIRE_NAMES[opt], events, total });
+    }
+    return { analysis: A, options: out };
+  }
+
+  const RICH_GENRES = new Set(["jazz", "rnb", "gospel", "lofi", "latin", "house", "melodictechno", "afrohouse", "cinematic"]);
+
+  /// Pianist voicing under the melody note: right hand = up to 3 chord tones just below the melody
+  /// (3rd and 7th first, then 5th / 9th / root), left hand = root in the bass plus fifth or octave.
+  function geniusVoicing(c, melody) {
+    const tones = [...new Set(Q[c.quality].iv.map(i => mod12(c.root + i)))];
+    const rank = t => { const r = mod12(t - c.root); return [3, 4, 10, 11].includes(r) ? 0 : r === 7 || r === 6 || r === 8 ? 1 : r === 2 || r === 9 || r === 5 ? 2 : 3; };
+    const ordered = tones.filter(t => t !== mod12(melody)).sort((a, b) => rank(a) - rank(b)).slice(0, 3);
+    const rh = [];
+    for (const pc of ordered) { let n = melody - 1; while (mod12(n) !== pc) n--; if (n >= melody - 11) rh.push(n); }
+    const low = rh.length ? Math.min(...rh) : melody;
+    let r = Math.min(low - 3, 52); while (mod12(r) !== c.root) r--;
+    if (r < 28) r += 12;
+    const lh = [r];
+    if (r + 7 < low - 2) lh.push(r + 7); else if (r + 12 < low - 2) lh.push(r + 12);
+    return [...new Set(lh.concat(rh))].filter(n => n >= 24 && n < melody).sort((x, y) => x - y);
+  }
+
+  return { inspire, analyzeTrack, INSPIRE_NAMES, geniusVoicing, VOICING_STYLES, oneFingerTable, styleVoicing, lockToScale, patternToMidi, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
            GENRES, PIANOS, SCALE_NAMES, Engine, buildPattern, prefersFlats, pcs, ARPEGGIOS, MELODY_NAMES, MELODY_COUNT, rng };
 })();
 if (typeof module !== "undefined") module.exports = CP;

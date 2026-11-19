@@ -8,15 +8,17 @@ echo "  ╔═══════════════════════
 echo "  ║        ChordPilot – Installazione    ║"
 echo "  ╚══════════════════════════════════════╝"
 echo ""
-echo "  Cosa vuoi installare?"
+echo "  Cosa vuoi installare?  (premi Invio per installare TUTTO)"
 echo ""
+echo "   0) TUTTO – VST3 + Audio Unit + app Standalone (Mac) e prepara l'iPad"
 echo "   1) iPad  – app + plug-in AUv3 (con Xcode, sull'iPad collegato)"
 echo "   2) Mac Apple Silicon – app iPad + plug-in AUv3 (con Xcode)"
 echo "   3) iPad  – installa il file .ipa con Sideloadly"
 echo "   4) Mac – VST3 / Audio Unit / app Standalone (installer .pkg, scegli i componenti)"
 echo "   5) Esci"
 echo ""
-read -r -p "  Scelta [1-5]: " CHOICE
+read -r -p "  Scelta [0-5, Invio = 0]: " CHOICE
+CHOICE="${CHOICE:-0}"
 
 prepare_project() {
   if ! xcode-select -p >/dev/null 2>&1; then
@@ -39,6 +41,17 @@ prepare_project() {
 }
 
 case "$CHOICE" in
+  0)
+    if [ -f "$HERE/Mac/ChordPilot-Mac.pkg" ]; then
+      echo "  Installo VST3, Audio Unit e app Standalone (serve la password del Mac)…"
+      sudo installer -pkg "$HERE/Mac/ChordPilot-Mac.pkg" -target / && echo "  ✅ Installato sul Mac."
+    else
+      echo "  ChordPilot-Mac.pkg non è in questa cartella (lo crea la compilazione su GitHub)."
+    fi
+    echo "  iPad: apri INSTALLA.html sull'iPad e tocca 'Apri ChordPilot web' → Condividi → Aggiungi alla Home."
+    echo "        App nativa + AUv3: opzione 1 di questo menu (serve Xcode)."
+    open "$HERE/INSTALLA.html"
+    ;;
   1)
     prepare_project
     echo ""

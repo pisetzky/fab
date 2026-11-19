@@ -259,24 +259,87 @@ public final class SuggestionEngine {
             m = c; break
         }
         let pc = mod12(m)
-        if let s = ctx.chords.first(where: { $0.chord.pitchClasses.contains(pc) }) { return (m, s.chord, m - note) }
-        let r = suggest(held: [m])
-        let ch = r.chords.first?.chord ?? Chord(root: key.tonic, quality: key.isMinor ? .minor : .major)
+        // Every note gets its own chord: the best next chord containing the note, never the chord just played.
+        let last = history.last
+        func fresh(_ s: ChordSuggestion) -> Bool { s.chord.pitchClasses.contains(pc) && !(last.map { s.chord.isLooselyEqual($0) } ?? false) }
+        var pick = ctx.chords.first(where: fresh)?.chord
+        if pick == nil { pick = suggest(held: [m]).chords.first(where: fresh)?.chord }
+        if pick == nil { pick = ctx.chords.first(where: { $0.chord.pitchClasses.contains(pc) })?.chord }
+        var ch = pick ?? Chord(root: key.tonic, quality: key.isMinor ? .minor : .major)
+        if Self.richGenres.contains(genre.id) && complexity != .simple { ch = Chord(root: ch.root, quality: Self.enrich(ch.quality)) }
         return (m, ch, m - note)
     }
 
-    /// Chord tones voiced just below the melody note, plus the root in the bass.
-    public static func geniusVoicing(tones: [Int], root: Int, melody: Int) -> [Int] {
-        var out: [Int] = []
-        for pc in tones {
-            var n = melody - 2
-            while mod12(n) != pc { n -= 1 }
-            if n >= melody - 14 && n >= 28 && !out.contains(n) { out.append(n) }
+    // MARK: Pro options (inspired by Scaler, Captain Chords, InstaChord/Cthulhu)
+
+    public static let voicingStyles = ["Automatico", "Stretto", "Aperto", "Drop 2", "Largo"]
+
+    /// One-finger chords: the chord of the scale built on each pitch class
+    /// (black keys: a richer version of the nearest lower degree).
+    public func oneFingerTable() -> [(root: Int, quality: ChordQuality, tones: [Int])] {
+        let key = currentKey
+        let chords = diatonicChords(key: key, scale: genre.scale(for: key))
+        return (0..<12).map { pc in
+            var c: Chord
+            if let found = chords.first(where: { $0.root == pc }) { c = found }
+            else {
+                let lower = chords.filter { mod12(pc - $0.root) <= 2 }.min { mod12(pc - $0.root) < mod12(pc - $1.root) } ?? chords.first
+                    ?? Chord(root: key.tonic, quality: .major)
+                c = Chord(root: lower.root, quality: Self.enrich(lower.quality))
+            }
+            var tones: [Int] = []
+            for iv in c.quality.intervals where !tones.contains(mod12(c.root + iv)) { tones.append(mod12(c.root + iv)) }
+            return (c.root, c.quality, tones)
         }
-        var b = melody - 17
-        while mod12(b) != root { b -= 1 }
-        if b >= 24 { out.append(b) }
-        return out.sorted()
+    }
+
+    /// Scale lock: closest note of the current scale (ties go down).
+    public func lockToScale(_ note: Int) -> Int {
+        let key = currentKey
+        let sc = key.scale(genre.scale(for: key))
+        for d in [0, -1, 1, -2, 2] where sc.contains(mod12(note + d)) { return note + d }
+        return note
+    }
+
+    /// Chord tones stacked on `rootNote` in a style (1 Stretto, 2 Aperto, 3 Drop 2, 4 Largo), plus the bass.
+    public static func styleVoicing(tones: [Int], root: Int, rootNote: Int, style: Int) -> [Int] {
+        var r = rootNote
+        while mod12(r) != root { r -= 1 }
+        let order = [root] + tones.filter { $0 != root }
+        var notes: [Int] = []
+        var last = r - 1
+        for t in order { var n = last + 1; while mod12(n) != t { n += 1 }; notes.append(n); last = n }
+        if style == 2 && notes.count >= 3 { notes[1] += 12 }
+        if style == 3 && notes.count >= 4 { notes[notes.count - 2] -= 12 }
+        if style == 4 { for i in 1..<notes.count { notes[i] += 12 } }
+        notes.append(r - 12)
+        return Array(Set(notes.filter { $0 >= 21 && $0 <= 108 })).sorted()
+    }
+
+    static let richGenres: Set<String> = ["jazz", "rnb", "gospel", "lofi", "latin", "house", "melodictechno", "afrohouse", "cinematic"]
+
+    /// Pianist voicing: right hand = up to 3 chord tones just below the melody (3rd/7th first, then 5th, 9th, root);
+    /// left hand = root in the bass plus fifth or octave.
+    public static func geniusVoicing(tones: [Int], root: Int, melody: Int) -> [Int] {
+        func rank(_ t: Int) -> Int {
+            let r = mod12(t - root)
+            if [3, 4, 10, 11].contains(r) { return 0 }
+            if [6, 7, 8].contains(r) { return 1 }
+            if [2, 5, 9].contains(r) { return 2 }
+            return 3
+        }
+        let ordered = tones.filter { $0 != mod12(melody) }.enumerated()
+            .sorted { rank($0.element) != rank($1.element) ? rank($0.element) < rank($1.element) : $0.offset < $1.offset }
+            .prefix(3).map { $0.element }
+        var rh: [Int] = []
+        for pc in ordered { var n = melody - 1; while mod12(n) != pc { n -= 1 }; if n >= melody - 11 { rh.append(n) } }
+        let low = rh.min() ?? melody
+        var r = min(low - 3, 52)
+        while mod12(r) != root { r -= 1 }
+        if r < 28 { r += 12 }
+        var lh = [r]
+        if r + 7 < low - 2 { lh.append(r + 7) } else if r + 12 < low - 2 { lh.append(r + 12) }
+        return Array(Set(lh + rh)).filter { $0 >= 24 && $0 < melody }.sorted()
     }
 
     /// Remember the voicing that was actually played so the next suggestions lead smoothly from it.

@@ -60,9 +60,9 @@ final class ChordPilotDSPKernel {
 
     // MARK: Genius mode (table of 12 pitch classes × 8 ints, triple buffered)
     var geniusEnabled = false
-    static let geniusStride = 9                  // shift, root, numTones, tones[5], quality
+    static let geniusStride = 17                 // genius: shift, root, numTones, tones[5], quality | one-finger: root, numTones, tones[5] | lockShift
     private let geniusTables: [UnsafeMutablePointer<Int32>] = (0..<3).map { _ in
-        let p = UnsafeMutablePointer<Int32>.allocate(capacity: 12 * 9); p.initialize(repeating: 0, count: 108); return p }
+        let p = UnsafeMutablePointer<Int32>.allocate(capacity: 12 * 17); p.initialize(repeating: 0, count: 204); return p }
     private let geniusPending = cp_atomic_create(-1)
     private let geniusActive = cp_atomic_create(0)
     private var geniusHasTable = false
@@ -75,6 +75,25 @@ final class ChordPilotDSPKernel {
     private var gChangedAt: Int64 = -1_000_000
     private var lastNoteAt: Int64 = 0
     private var sampleClock: Int64 = 0
+
+    // MARK: Pro options (Scaler / Captain Chords / InstaChord-style extras)
+    var oneFingerEnabled = false
+    var scaleLockEnabled = false
+    var transpose = 0
+    var strumMs: Double = 0
+    var humanize: Double = 0        // 0...1
+    var swing: Double = 0           // 0...0.6
+    var voicingStyle = 0
+    private var inTransform = false
+    private let ofScratch: UnsafeMutablePointer<Int32> = {
+        let p = UnsafeMutablePointer<Int32>.allocate(capacity: 12); p.initialize(repeating: 0, count: 12); return p }()
+    private var lastTempo: Double = 120
+    private var randomState: UInt32 = 0x1234567
+    struct Delayed { var due: Int64 = 0; var status: UInt8 = 0; var note: UInt8 = 0; var vel: UInt8 = 0; var pattern = false; var active = false }
+    private let delayed: UnsafeMutablePointer<Delayed> = {
+        let p = UnsafeMutablePointer<Delayed>.allocate(capacity: 1024); p.initialize(repeating: Delayed(), count: 1024); return p }()
+    private let oneFingerHeld: UnsafeMutablePointer<Int32> = {   // 128 keys × (count + 9 notes)
+        let p = UnsafeMutablePointer<Int32>.allocate(capacity: 128 * 10); p.initialize(repeating: 0, count: 1280); return p }()
 
     // MARK: UI → audio
     let uiRing = cp_ring_create(1024)           // packed MIDI messages from the on-screen keyboard
@@ -174,7 +193,8 @@ final class ChordPilotDSPKernel {
 
     /// Publishes a new loop for the genre player (triple buffered, never blocks the audio thread).
     /// Publishes the genius lookup table: for each pitch class (shift, chord root, chord tones).
-    func publishGeniusTable(_ entries: [(shift: Int, root: Int, quality: Int, tones: [Int])]) {
+    func publishGeniusTable(_ entries: [(shift: Int, root: Int, quality: Int, tones: [Int])],
+                            oneFinger: [(root: Int, tones: [Int])] = [], lockShifts: [Int] = []) {
         let active = cp_atomic_load(geniusActive), pending = cp_atomic_load(geniusPending)
         var target: Int32 = 0
         while target == active || target == pending { target += 1 }
@@ -185,6 +205,12 @@ final class ChordPilotDSPKernel {
             let tones = e.tones.prefix(5)
             t[b + 2] = Int32(tones.count); t[b + 8] = Int32(e.quality)
             for (i, x) in tones.enumerated() { t[b + 3 + i] = Int32(x) }
+            if pc < oneFinger.count {
+                let of = oneFinger[pc], ot = of.tones.prefix(5)
+                t[b + 9] = Int32(of.root); t[b + 10] = Int32(ot.count)
+                for (i, x) in ot.enumerated() { t[b + 11 + i] = Int32(x) }
+            }
+            t[b + 16] = pc < lockShifts.count ? Int32(lockShifts[pc]) : 0
         }
         cp_atomic_store(geniusPending, target)
     }
@@ -261,9 +287,11 @@ final class ChordPilotDSPKernel {
             seekCursor(toStep: nextStep)
         } else if !shouldPlay && isPlaying {
             isPlaying = false
+            for i in 0..<1024 where delayed[i].pattern { delayed[i].active = false }
             releasePatternNotes(at: 0, sampleTime: sampleTime)
         }
         let samplesPerStep = sampleRate * 60.0 / max(20, tempo) / 4.0
+        lastTempo = tempo
         if isPlaying && followHost {
             let hostPhase = hostBeat * 4
             if abs(hostPhase - stepPhase) > 0.5 {     // host jumped (loop / locate)
@@ -300,12 +328,14 @@ final class ChordPilotDSPKernel {
                 let off = Int(ceil((Double(nextStep) - phaseStart) * samplesPerStep))
                 nextStepOffset = max(done, min(frames - 1, off))
             }
-            let next = min(nextEventOffset, nextStepOffset)
+            let nextDelayed = nextDelayedOffset(done: done, frames: frames)
+            let next = min(nextEventOffset, nextStepOffset, nextDelayed)
             if next > done {
                 synthesize(abl, from: done, to: next)
                 done = next
             }
             if next >= frames { break }
+            if nextDelayed == next { runDelayed(offset: next, sampleTime: sampleTime) }
             if nextEventOffset == next, let e = event {
                 handleRenderEvent(e, offset: next, sampleTime: sampleTime)
                 event = UnsafePointer(e.pointee.head.next)
@@ -379,6 +409,25 @@ final class ChordPilotDSPKernel {
         patternChordIndex = Int32(step / max(1, stepsPerChord))
         let s = Int32(step)
         while cursor < count && buffer[cursor].step < s { cursor += 1 }
+        // Pro: swing, strum and humanize go through the delayed-event queue.
+        if swing > 0 || strumMs > 0 || humanize > 0 {
+            let spStep = sampleRate * 60.0 / max(20, lastTempo) / 4.0
+            let base = sampleClock + Int64(offset) + (step % 2 == 1 ? Int64(spStep * swing) : 0)
+            var chordIdx: Int64 = 0
+            while cursor < count && buffer[cursor].step == s {
+                let e = buffer[cursor]
+                let ch: UInt8 = e.lane == 1 ? 1 : 0
+                if e.velocity > 0 {
+                    let st: Int64 = e.lane == 1 ? 0 : Int64(strumMs / 1000 * sampleRate) * chordIdx
+                    if e.lane != 1 { chordIdx += 1 }
+                    enqueue(due: base + st + humanDelay(), status: 0x90 | ch, note: e.note, vel: humanVel(e.velocity), pattern: true)
+                } else {
+                    enqueue(due: base, status: 0x80 | ch, note: e.note, vel: 0, pattern: true)
+                }
+                cursor += 1
+            }
+            return
+        }
         while cursor < count && buffer[cursor].step == s {
             let e = buffer[cursor]
             let ch: UInt8 = e.lane == 1 ? 1 : 0
@@ -410,8 +459,12 @@ final class ChordPilotDSPKernel {
         let type = status & 0xF0
         let channel = status & 0x0F
         // Genius mode: user notes become the closest fitting note, harmonised by the next chord.
-        if geniusEnabled && geniusHasTable && !fromPattern && channel != 15 && (type == 0x90 || type == 0x80) {
-            if geniusTransform(status, d1, d2, offset: offset, sampleTime: sampleTime, fromUI: fromUI) { return }
+        if !fromPattern && !inTransform && channel != 15 && (type == 0x90 || type == 0x80)
+            && (transpose != 0 || ((oneFingerEnabled || scaleLockEnabled || geniusEnabled) && geniusHasTable)) {
+            inTransform = true
+            transformInput(status, d1, d2, offset: offset, sampleTime: sampleTime, fromUI: fromUI)
+            inTransform = false
+            return
         }
         let note = Int(d1 & 0x7F)
         let suggestionLane = !fromPattern && channel == 15      // tapped suggestions use MIDI channel 16
@@ -445,6 +498,125 @@ final class ChordPilotDSPKernel {
         }
     }
 
+    /// User-note pipeline: transpose → one-finger chords / Genius mode / scale lock.
+    private func transformInput(_ status: UInt8, _ d1: UInt8, _ d2: UInt8, offset: Int, sampleTime: Float64, fromUI: Bool) {
+        let ch = status & 0x0F
+        let isOff = status & 0xF0 == 0x80 || d2 == 0
+        let raw = Int(d1 & 0x7F)
+        let pressed = max(0, min(127, raw + transpose))
+        let table = geniusTables[Int(cp_atomic_load(geniusActive))]
+        if oneFingerEnabled && geniusHasTable {
+            let slot = oneFingerHeld + raw * 10
+            if isOff {
+                for i in 0..<Int(slot[0]) {
+                    let n = slot[1 + i]
+                    var still = false
+                    for k in 0..<128 where k != raw {
+                        let o = oneFingerHeld + k * 10
+                        for j in 0..<Int(o[0]) where o[1 + j] == n { still = true }
+                    }
+                    if !still { handleMIDI(0x80 | ch, UInt8(n), 0, offset: offset, sampleTime: sampleTime, fromPattern: false, forward: true, fromUI: fromUI) }
+                }
+                slot[0] = 0
+                return
+            }
+            let t = table + (pressed % 12) * Self.geniusStride
+            let root = Int(t[9]), nt = Int(t[10])
+            var r = pressed
+            while r % 12 != root { r -= 1 }
+            // stack the chord tones on the root, then apply the voicing style and add the bass (no allocation)
+            let notes = ofScratch
+            var nn = 0
+            var last = r - 1
+            for i in -1..<nt {
+                let tone = i < 0 ? root : Int(t[11 + i])
+                if i >= 0 && tone == root { continue }
+                var n = last + 1
+                while n % 12 != tone { n += 1 }
+                notes[nn] = Int32(n); nn += 1; last = n
+            }
+            let style = max(1, voicingStyle)
+            if style == 2 && nn >= 3 { notes[1] += 12 }
+            if style == 3 && nn >= 4 { notes[nn - 2] -= 12 }
+            if style == 4 && nn > 1 { for i in 1..<nn { notes[i] += 12 } }
+            notes[nn] = Int32(r - 12); nn += 1
+            var count = 0
+            for k in 0..<nn where notes[k] >= 21 && notes[k] <= 108 && count < 9 {
+                let n = notes[k]
+                var dup = false
+                for j in 0..<count where slot[1 + j] == n { dup = true }
+                if dup { continue }
+                slot[1 + count] = n
+                let delay = Int64(strumMs / 1000 * sampleRate) * Int64(count) + humanDelay()
+                let vel = humanVel(d2)
+                if delay == 0 {
+                    handleMIDI(0x90 | ch, UInt8(n), vel, offset: offset, sampleTime: sampleTime, fromPattern: false, forward: true, fromUI: fromUI)
+                } else { enqueue(due: sampleClock + Int64(offset) + delay, status: 0x90 | ch, note: UInt8(n), vel: vel, pattern: false) }
+                count += 1
+            }
+            slot[0] = Int32(count)
+            return
+        }
+        if geniusEnabled && geniusHasTable {
+            _ = geniusTransform(status, UInt8(pressed), d2, offset: offset, sampleTime: sampleTime, fromUI: fromUI)
+            return
+        }
+        if scaleLockEnabled && geniusHasTable {
+            if isOff {
+                let n = pressedToSounding[raw] >= 0 ? Int(pressedToSounding[raw]) : pressed
+                pressedToSounding[raw] = -1
+                handleMIDI(0x80 | ch, UInt8(n), 0, offset: offset, sampleTime: sampleTime, fromPattern: false, forward: true, fromUI: fromUI)
+            } else {
+                let n = max(0, min(127, pressed + Int(table[(pressed % 12) * Self.geniusStride + 16])))
+                pressedToSounding[raw] = Int16(n)
+                handleMIDI(0x90 | ch, UInt8(n), d2, offset: offset, sampleTime: sampleTime, fromPattern: false, forward: true, fromUI: fromUI)
+            }
+            return
+        }
+        handleMIDI(isOff ? 0x80 | ch : 0x90 | ch, UInt8(pressed), isOff ? 0 : d2, offset: offset, sampleTime: sampleTime,
+                   fromPattern: false, forward: true, fromUI: fromUI)
+    }
+
+    // MARK: Delayed events (strum, humanize, swing)
+
+    private func nextRandom() -> Double {
+        randomState = randomState &* 1664525 &+ 1013904223
+        return Double(randomState >> 8) / 16777216.0
+    }
+    private func humanVel(_ v: UInt8) -> UInt8 {
+        UInt8(max(1, min(127, Int((Double(v) + (nextRandom() * 2 - 1) * 14 * humanize).rounded()))))
+    }
+    private func humanDelay() -> Int64 { Int64(nextRandom() * 0.025 * humanize * sampleRate) }
+
+    private func enqueue(due: Int64, status: UInt8, note: UInt8, vel: UInt8, pattern: Bool) {
+        for i in 0..<1024 where !delayed[i].active {
+            delayed[i] = Delayed(due: due, status: status, note: note, vel: vel, pattern: pattern, active: true)
+            return
+        }
+    }
+
+    private func nextDelayedOffset(done: Int, frames: Int) -> Int {
+        var best = Int64.max
+        for i in 0..<1024 where delayed[i].active && delayed[i].due < sampleClock + Int64(frames) { best = min(best, delayed[i].due) }
+        if best == Int64.max { return frames }
+        return Int(max(Int64(done), min(Int64(frames - 1), best - sampleClock)))
+    }
+
+    private func runDelayed(offset: Int, sampleTime: Float64) {
+        let now = sampleClock + Int64(offset)
+        inTransform = true
+        for pass in 0..<2 {                      // note-offs first, then note-ons
+            for i in 0..<1024 where delayed[i].active && delayed[i].due <= now {
+                let d = delayed[i]
+                let isOn = d.status & 0xF0 == 0x90 && d.vel > 0
+                if (pass == 0) == isOn { continue }
+                delayed[i].active = false
+                handleMIDI(d.status, d.note, d.vel, offset: offset, sampleTime: sampleTime, fromPattern: d.pattern, forward: true)
+            }
+        }
+        inTransform = false
+    }
+
     /// Returns true when the event was fully handled.
     private func geniusTransform(_ status: UInt8, _ d1: UInt8, _ d2: UInt8, offset: Int, sampleTime: Float64, fromUI: Bool) -> Bool {
         let pressed = Int(d1 & 0x7F)
@@ -463,22 +635,38 @@ final class ChordPilotDSPKernel {
         let now = sampleClock + Int64(offset)
         var fits = false
         for i in 0..<gNumTones where Int(gTones[i]) == n % 12 { fits = true }
-        if !(gChordOn && fits && now - gChangedAt < Int64(1.5 * sampleRate)) {
+        if !(gChordOn && fits && now - gChangedAt < Int64(0.18 * sampleRate)) {
             geniusChordOff(offset: offset, sampleTime: sampleTime)
             let root = Int(t[1]), nt = Int(t[2])
             gNumTones = nt
             gCount = 0
-            for i in 0..<nt {
-                gTones[i] = t[3 + i]
-                var x = n - 2
-                while x % 12 != Int(t[3 + i]) { x -= 1 }
-                var dup = false
-                for j in 0..<gCount where Int(gNotes[j]) == x { dup = true }
-                if x >= n - 14 && x >= 28 && !dup { gNotes[gCount] = Int32(x); gCount += 1 }
+            // Pianist voicing (same as SuggestionEngine.geniusVoicing, allocation-free):
+            // right hand = 3rd/7th first, then 5th, 9th, root, just below the melody; left hand = root + fifth/octave.
+            func rank(_ tone: Int) -> Int {
+                let r = (tone - root + 12) % 12
+                if r == 3 || r == 4 || r == 10 || r == 11 { return 0 }
+                if r == 6 || r == 7 || r == 8 { return 1 }
+                if r == 2 || r == 5 || r == 9 { return 2 }
+                return 3
             }
-            var b = n - 17
+            for i in 0..<nt { gTones[i] = t[3 + i] }
+            var low = n
+            var picked = 0
+            for wanted in 0...3 where picked < 3 {
+                for i in 0..<nt where picked < 3 {
+                    let tone = Int(t[3 + i])
+                    if tone == n % 12 || rank(tone) != wanted { continue }
+                    var x = n - 1
+                    while x % 12 != tone { x -= 1 }
+                    if x >= n - 11 { gNotes[gCount] = Int32(x); gCount += 1; low = min(low, x); picked += 1 }
+                }
+            }
+            var b = min(low - 3, 52)
             while b % 12 != root { b -= 1 }
-            if b >= 24 && gCount < 8 { gNotes[gCount] = Int32(b); gCount += 1 }
+            if b < 28 { b += 12 }
+            if b >= 24 && b < n { gNotes[gCount] = Int32(b); gCount += 1 }
+            if b + 7 < low - 2 { gNotes[gCount] = Int32(b + 7); gCount += 1 }
+            else if b + 12 < low - 2 { gNotes[gCount] = Int32(b + 12); gCount += 1 }
             let vel = UInt8(max(1, min(127, Int(Float(d2) * 0.62))))
             for i in 0..<gCount {
                 if synthEnabled && !isMIDIEffect { noteOn(Int(gNotes[i]), velocity: vel, lane: 4) }
@@ -712,5 +900,6 @@ final class ChordPilotDSPKernel {
 /// Parameter addresses shared by the Audio Unit, the UI and the host.
 public enum ParamAddress: AUParameterAddress {
     case genre = 0, keyRoot, keyMinor, complexity, volume, synth, hostSync, play, progression, bpm, piano,
-         arpeggio, melody, song, genius
+         arpeggio, melody, song, genius,
+         oneFinger, scaleLock, strum, humanize, swing, transpose, voicing
 }

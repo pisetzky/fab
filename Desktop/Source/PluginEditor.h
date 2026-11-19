@@ -43,7 +43,61 @@ public:
     void mouseDown(const juce::MouseEvent&) override { if (valid && onTap) onTap(); }
 };
 
-class ChordPilotEditor : public juce::AudioProcessorEditor, private juce::Timer {
+/// Pro options panel (Scaler / Captain Chords / InstaChord-style extras). All controls are host parameters.
+class ProPanel : public juce::Component {
+public:
+    explicit ProPanel(ChordPilotProcessor& p);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+private:
+    juce::ToggleButton oneFinger { "Accordi con un dito" }, scaleLock { "Blocca scala" };
+    juce::Slider strum, humanize, swing, transpose;
+    juce::Label strumL, humanizeL, swingL, transposeL;
+    juce::ComboBox voicing;
+    using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
+    std::unique_ptr<BA> a1, a2; std::unique_ptr<SA> s1, s2, s3, s4; std::unique_ptr<CA> c1;
+};
+
+/// Drag this button into the DAW to drop the current song as a MIDI file; click to save it.
+class MidiDragButton : public juce::TextButton {
+public:
+    explicit MidiDragButton(ChordPilotProcessor& p) : juce::TextButton("Trascina MIDI nella DAW"), proc(p) {}
+    /// Optional custom source (e.g. an Inspiration option) and file name.
+    std::function<std::shared_ptr<const cp::Pattern>()> source;
+    juce::String fileName;
+    juce::File writeMidi() const;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void clicked() override;
+private:
+    ChordPilotProcessor& proc;
+    bool dragging = false;
+    std::unique_ptr<juce::FileChooser> chooser;
+};
+
+/// Inspiration: records the track, then offers 10 melodies that follow it (listen / drag to the DAW).
+class InspirePanel : public juce::Component, private juce::Timer {
+public:
+    explicit InspirePanel(ChordPilotProcessor& p);
+    ~InspirePanel() override { stopTimer(); }
+    void paint(juce::Graphics&) override;
+    void resized() override;
+private:
+    void timerCallback() override;
+    void analyse();
+    ChordPilotProcessor& proc;
+    juce::TextButton rec4 { "Registra 4 battute" }, rec8 { "Registra 8 battute" }, fromPlayer { "Usa il Genre Player" };
+    juce::Label status;
+    std::vector<cp::RecordedNote> recorded; std::map<int, std::pair<int, int>> openNotes;  // note → (step, vel)
+    int total = 64;
+    std::vector<std::shared_ptr<const cp::Pattern>> optionPatterns;
+    juce::OwnedArray<juce::TextButton> listenButtons;
+    juce::OwnedArray<MidiDragButton> dragButtons;
+    juce::StringArray names;
+};
+
+class ChordPilotEditor : public juce::AudioProcessorEditor, public juce::DragAndDropContainer, private juce::Timer {
 public:
     explicit ChordPilotEditor(ChordPilotProcessor&);
     ~ChordPilotEditor() override;
@@ -69,6 +123,8 @@ private:
     juce::ComboBox genreBox, pianoBox, keyBox, complexityBox, progressionBox, arpBox, melodyBox;
     juce::ToggleButton minorToggle { "Minore" }, synthToggle { "Piano interno" }, syncToggle { "Sync DAW" }, italianToggle { "Do Re Mi" };
     juce::TextButton playButton { "Genre Player" }, newSongButton { "Nuova canzone" }, geniusButton { "Modalita Genio" }, octDown { "<" }, octUp { ">" };
+    juce::TextButton proButton { "Pro" }, inspireButton { "Ispirazione" };
+    MidiDragButton midiButton { proc };
     juce::Slider bpmSlider;
     std::array<SuggestionCard, 6> cards;
     KeyboardView keyboard;

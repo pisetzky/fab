@@ -74,8 +74,24 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: out }
 
+  desktop-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build VST3 + Standalone
+        working-directory: Desktop
+        run: |
+          sudo apt-get update && sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libfreetype-dev libfontconfig1-dev
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target ChordPilot_VST3 ChordPilot_Standalone ChordPilotEngineTests -j4
+          ./build/ChordPilotEngineTests
+          mkdir -p ../out && cp build/ChordPilot_artefacts/Release/Standalone/ChordPilot ../out/ && cp -R build/ChordPilot_artefacts/Release/VST3/ChordPilot.vst3 ../out/
+      - uses: actions/upload-artifact@v4
+        with: { name: linux, path: out }
+
   installer:
-    needs: [ipad, desktop-mac, desktop-windows]
+    needs: [ipad, desktop-mac, desktop-windows, desktop-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -93,6 +109,7 @@ jobs:
           cp WebApp/ChordPilot.html "$DIST/iPad/"
           cp artefacts/mac/* "$DIST/Mac/"
           cp artefacts/windows/* "$DIST/Windows/"
+          cp -R artefacts/linux/. "$DIST/Linux/" && chmod +x "$DIST/Linux/ChordPilot" "$DIST"/*.sh "$DIST"/*.command
           git archive --format=zip --prefix=ChordPilot-source/ -o "$DIST/iPad/ChordPilot-source.zip" HEAD
           (cd dist && zip -qry ChordPilot-Installer.zip ChordPilot-Installer)
       - uses: actions/upload-artifact@v4

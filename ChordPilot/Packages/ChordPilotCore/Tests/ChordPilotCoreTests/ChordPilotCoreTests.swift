@@ -135,12 +135,58 @@ final class ChordPilotCoreTests: XCTestCase {
     func testGeniusMode() {
         let e = SuggestionEngine(genre: Genre.byID("pop"))
         e.fixedKey = Key(tonic: 0, isMinor: false)
+        var last: Chord?
         for n in [61, 66, 63, 70, 68, 61, 66, 59] {
             let g = e.genius(note: n)
+            if let l = last { XCTAssertFalse(l.root == g.chord.root && l.quality == g.chord.quality, "chord repeated") }
+            last = g.chord
+            let v = SuggestionEngine.geniusVoicing(tones: Array(g.chord.pitchClasses), root: g.chord.root, melody: g.note)
+            XCTAssertGreaterThanOrEqual(v.count, 3)
+            XCTAssertTrue(v.allSatisfy { $0 < g.note })
             XCTAssertTrue([0, 2, 4, 5, 7, 9, 11].contains(mod12(g.note)))
             XCTAssertTrue(g.chord.pitchClasses.contains(mod12(g.note)))
             e.registerNoteOn(g.note); e.commit(chord: g.chord)
         }
+    }
+
+    func testProOptions() {
+        let e = SuggestionEngine(genre: Genre.byID("pop"))
+        e.fixedKey = Key(tonic: 0, isMinor: false)
+        let t = e.oneFingerTable()
+        XCTAssertEqual(Chord(root: t[0].root, quality: t[0].quality).name(), "C")
+        XCTAssertEqual(Chord(root: t[9].root, quality: t[9].quality).name(), "Am")
+        XCTAssertEqual(SuggestionEngine.styleVoicing(tones: t[0].tones, root: t[0].root, rootNote: 60, style: 2), [48, 60, 67, 76])
+        XCTAssertEqual(e.lockToScale(61), 60)
+        XCTAssertEqual(e.lockToScale(66), 65)
+        let p = GenrePatternBuilder.build(genre: Genre.byID("pop"), key: Genre.byID("pop").defaultKey, arpeggio: 3, melody: 2, seed: 5)
+        let midi = MidiExport.data(pattern: p, bpm: 110, loops: 2)
+        XCTAssertEqual(Array(midi.prefix(4)), Array("MThd".utf8))
+    }
+
+    func testInspiration() {
+        let g = Genre.byID("pop")
+        let p = GenrePatternBuilder.build(genre: g, key: Key(tonic: 7, isMinor: false), arpeggio: 3, melody: 4, seed: 11)
+        var rec: [RecordedNote] = []
+        var open: [Int: PatternEvent] = [:]
+        for e in p.events {
+            let k = Int(e.lane) * 1000 + Int(e.note)
+            if e.velocity > 0 { open[k] = e }
+            else if let o = open.removeValue(forKey: k) {
+                rec.append(RecordedNote(step: o.step, note: Int(o.note), velocity: Int(o.velocity), length: max(1, (e.step == 0 ? p.totalSteps : e.step) - o.step)))
+            }
+        }
+        let r = Inspiration.suggest(genre: g, recorded: rec, totalSteps: p.totalSteps)
+        XCTAssertEqual(r.chords.map { $0.name() }, ["G", "D", "Em", "C"])
+        XCTAssertEqual(r.options.count, 10)
+        var sigs = Set<String>()
+        for o in r.options {
+            var bal = [Int: Int]()
+            for e in o.events { bal[Int(e.note), default: 0] += e.velocity > 0 ? 1 : -1 }
+            XCTAssertTrue(bal.values.allSatisfy { $0 == 0 }, o.name)
+            XCTAssertTrue(o.events.contains { $0.velocity > 0 }, o.name)
+            sigs.insert(o.events.map { "\($0.step):\($0.note)" }.joined(separator: ","))
+        }
+        XCTAssertEqual(sigs.count, 10)
     }
 
     func testVoicingIsSmooth() {

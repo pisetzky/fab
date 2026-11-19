@@ -108,12 +108,21 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
             p("melody", "Melodia", .melody, 0, AUValue(Melodies.count), .indexed,
               ["Nessuna"] + Melodies.names.enumerated().map { "\($0.offset + 1). \($0.element)" }),
             p("song", "Canzone", .song, 0, 9999, .generic),
-            p("genius", "Modalità Genio", .genius, 0, 1, .boolean)
+            p("genius", "Modalità Genio", .genius, 0, 1, .boolean),
+            // Pro options (all off by default)
+            p("onefinger", "Accordi con un dito", .oneFinger, 0, 1, .boolean),
+            p("scalelock", "Blocca scala", .scaleLock, 0, 1, .boolean),
+            p("strum", "Strum (ms)", .strum, 0, 120, .milliseconds),
+            p("humanize", "Humanize (%)", .humanize, 0, 100, .percent),
+            p("swing", "Swing (%)", .swing, 0, 60, .percent),
+            p("transpose", "Trasponi", .transpose, -12, 12, .relativeSemiTones),
+            p("voicing", "Voicing", .voicing, 0, AUValue(SuggestionEngine.voicingStyles.count - 1), .indexed, SuggestionEngine.voicingStyles)
         ]
         params[Int(ParamAddress.volume.rawValue)].value = 0.8
         params[Int(ParamAddress.synth.rawValue)].value = kernel.isMIDIEffect ? 0 : 1
         params[Int(ParamAddress.hostSync.rawValue)].value = 1
         params[Int(ParamAddress.bpm.rawValue)].value = AUValue(genre.bpm)
+        params.first { $0.address == ParamAddress.transpose.rawValue }?.value = 0
         _parameterTree = AUParameterTree.createTree(withChildren: params)
 
         _parameterTree.implementorValueObserver = { [weak self] param, value in
@@ -150,6 +159,13 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         case .melody: return AUValue(melody + 1)
         case .song: return AUValue(song)
         case .genius: return genius ? 1 : 0
+        case .oneFinger: return kernel.oneFingerEnabled ? 1 : 0
+        case .scaleLock: return kernel.scaleLockEnabled ? 1 : 0
+        case .strum: return AUValue(kernel.strumMs)
+        case .humanize: return AUValue(kernel.humanize * 100)
+        case .swing: return AUValue(kernel.swing * 100)
+        case .transpose: return AUValue(kernel.transpose)
+        case .voicing: return AUValue(kernel.voicingStyle)
         case .none: return 0
         }
     }
@@ -194,6 +210,13 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
             genius = value > 0.5
             kernel.geniusEnabled = genius
             scheduleGeniusRefresh()
+        case .oneFinger: kernel.oneFingerEnabled = value > 0.5; scheduleGeniusRefresh()
+        case .scaleLock: kernel.scaleLockEnabled = value > 0.5; scheduleGeniusRefresh()
+        case .strum: kernel.strumMs = Double(max(0, min(120, value)))
+        case .humanize: kernel.humanize = Double(max(0, min(100, value))) / 100
+        case .swing: kernel.swing = Double(max(0, min(60, value))) / 100
+        case .transpose: kernel.transpose = Int(value.rounded())
+        case .voicing: kernel.voicingStyle = Int(value.rounded())
         case .none: break
         }
         if rebuild { schedulePatternRebuild() } else { notifyStateChange() }
@@ -223,6 +246,15 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         notifyStateChange()
     }
 
+    /// Plays a ready-made loop (e.g. a track + an Inspiration melody) until a musical setting changes.
+    public func playCustom(_ p: GenrePattern) {
+        currentPattern = p
+        kernel.publishPattern(events: p.events.map { ($0.step, $0.note, $0.velocity, $0.lane) },
+                              totalSteps: p.totalSteps, stepsPerChord: 16)
+        set(.play, 1)
+        notifyStateChange()
+    }
+
     /// A completely different song: new progression, arpeggio, melody and variation – and start playing.
     public func newSong() {
         set(.progression, AUValue(Int.random(in: 0..<genre.progressions.count)))
@@ -237,11 +269,12 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
     private func scheduleGeniusRefresh() {
         let work = { [weak self] in
             guard let self else { return }
-            if self.genius && self.geniusTimer == nil {
+            let needsTable = self.genius || self.kernel.oneFingerEnabled || self.kernel.scaleLockEnabled
+            if needsTable && self.geniusTimer == nil {
                 let t = Timer(timeInterval: 1.0 / 15.0, repeats: true) { [weak self] _ in self?.geniusTick() }
                 RunLoop.main.add(t, forMode: .common)
                 self.geniusTimer = t
-            } else if !self.genius {
+            } else if !needsTable {
                 self.geniusTimer?.invalidate(); self.geniusTimer = nil
             }
             self.refreshGeniusTable()
@@ -265,14 +298,16 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
     private func refreshGeniusTable() {
         if geniusEngine.genre != genre { geniusEngine.genre = genre; geniusEngine.reset() }
         geniusEngine.complexity = complexity
-        geniusEngine.fixedKey = fixedKey
+        geniusEngine.fixedKey = fixedKey ?? (genius ? nil : detectedKey)
         let entries: [(shift: Int, root: Int, quality: Int, tones: [Int])] = (0..<12).map { pc in
             let g = geniusEngine.genius(note: 60 + pc)
             var tones: [Int] = []
             for iv in g.chord.quality.intervals where !tones.contains(mod12(g.chord.root + iv)) { tones.append(mod12(g.chord.root + iv)) }
             return (g.shift, g.chord.root, ChordQuality.allCases.firstIndex(of: g.chord.quality) ?? 0, tones)
         }
-        kernel.publishGeniusTable(entries)
+        let of = geniusEngine.oneFingerTable().map { (root: $0.root, tones: $0.tones) }
+        let locks = (0..<12).map { geniusEngine.lockToScale(60 + $0) - (60 + $0) }
+        kernel.publishGeniusTable(entries, oneFinger: of, lockShifts: locks)
     }
 
     private func notifyStateChange() {

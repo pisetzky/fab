@@ -43,5 +43,39 @@ int main() {
         for (auto& ev : p.events) if (ev.lane == 1 && ev.vel && c++ < 14) std::cout << " " << kSharps[ev.note % 12] << (ev.note / 12 - 1) << "@" << ev.step;
         std::cout << "\n";
     }
+    // Pro options
+    { Engine e; e.fixedKey = Key{0,false};
+      auto t = oneFingerTable(e);
+      assert(makeChord(t[0].root, t[0].quality).name() == "C" && makeChord(t[9].root, t[9].quality).name() == "Am");
+      int out[10]; int n = styleVoicing(t[0].tones.data(), (int) t[0].tones.size(), t[0].root, 60, 2, out);
+      assert(n == 4 && out[0] == 48 && out[1] == 60 && out[2] == 67 && out[3] == 76);
+      assert(lockToScale(e, 61) == 60 && lockToScale(e, 66) == 65); }
+    // Genius: a new chord on every note, never repeated, pianist voicing below the melody
+    { Engine e; e.fixedKey = Key{0,false}; std::optional<Chord> last; std::cout << "genius:";
+      for (int n : { 61, 66, 63, 70, 68, 61, 66, 59, 64, 62 }) {
+          auto g = e.genius(n); e.noteOn(g.note);
+          assert(!(last && last->root == g.chord.root && last->quality == g.chord.quality));
+          assert(g.chord.pcs().count(mod12(g.note)));
+          std::vector<int> tones; for (int t : g.chord.pcs()) tones.push_back(t);
+          int out[10]; int c = geniusVoicing(tones.data(), (int) tones.size(), g.chord.root, g.note, out);
+          assert(c >= 3); for (int i = 0; i < c; ++i) assert(out[i] < g.note);
+          e.commit(g.chord); last = g.chord; std::cout << " " << g.chord.name();
+      }
+      std::cout << "\n"; }
+    // Inspiration from a recorded track (the pop genre player itself)
+    { const Genre& g = genres()[0];
+      auto p = buildPattern(g, Key{7,false}, 0, 1, 3, 4, 11);
+      std::vector<RecordedNote> rec; std::map<int, PatternEvent> open;
+      for (auto& e : p.events) { int k = e.lane * 1000 + e.note;
+          if (e.vel > 0) open[k] = e; else if (open.count(k)) { auto o = open[k]; open.erase(k); rec.push_back({ o.step, o.note, o.vel, std::max(1, (e.step == 0 ? p.total : e.step) - o.step) }); } }
+      auto r = inspire(g, rec, p.total);
+      std::cout << "inspire key " << kSharps[r.key.tonic] << " chords:"; for (auto& c : r.chords) std::cout << " " << c.name(); std::cout << "\n";
+      assert(r.options.size() == 10);
+      std::set<std::string> sigs;
+      for (auto& o : r.options) { std::map<int,int> bal; int ons = 0; std::string sig;
+          for (auto& e : o.events) { assert(e.step >= 0 && e.step < p.total); bal[e.note] += e.vel ? 1 : -1; if (e.vel) ons++; sig += std::to_string(e.step) + ":" + std::to_string(e.note) + ","; }
+          for (auto& [k2, v] : bal) assert(v == 0);
+          assert(ons > 0); sigs.insert(sig); }
+      assert(sigs.size() == 10); }
     std::cout << "ALL OK\n";
 }

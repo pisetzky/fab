@@ -60,6 +60,14 @@ body {
 .field.mel { border-color: rgba(255,111,181,0.55); }
 .btn.genius[aria-pressed="true"] { background: linear-gradient(135deg, var(--green), var(--cyan)); color: #022018; border: 0; box-shadow: 0 0 22px rgba(61,255,176,0.55); }
 .genius-on #kb { box-shadow: 0 0 40px rgba(61,255,176,0.45), inset 0 6px 10px rgba(0,0,0,0.35); }
+.btn.insp { border-color: rgba(255,194,51,0.6); }
+.insp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-top: 10px; }
+.insp-card { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; background: rgba(255,255,255,0.03); }
+.insp-card b { font-family: var(--font-display); }
+.insp-card .row2 { display: flex; gap: 6px; }
+.insp-card .btn { height: 32px; font-size: 13px; }
+.insp-card.on { border-color: var(--pink); box-shadow: 0 0 14px rgba(255,111,181,0.4); }
+#inspire { max-width: min(680px, calc(100vw - 32px)); }
 .btn.song { background: linear-gradient(135deg, rgba(255,111,181,0.35), rgba(142,108,255,0.35)); border-color: rgba(255,111,181,0.6); }
 .key.mel::after { content: ""; position: absolute; left: 4px; right: 4px; top: 13px; height: 6px; border-radius: 3px; background: var(--pink); z-index: 3; box-shadow: 0 0 10px var(--pink); }
 .player .song { margin-left: auto; color: var(--pink); font-weight: 700; }
@@ -129,6 +137,12 @@ body {
 .hint { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none;
   padding: 10px 18px; border-radius: 999px; background: rgba(5,11,26,0.82); color: var(--fg); font-weight: 600; border: 1px solid var(--line); white-space: nowrap; }
 
+.btn.pro { border-color: rgba(92,214,255,0.55); }
+.pro-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 12px 0; }
+.pro-grid .rowx { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pro-grid input[type=range] { accent-color: var(--green); width: 55%; }
+.pro-grid .val { min-width: 54px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.pro-note { font-size: 12px; color: var(--muted); }
 dialog { border: 1px solid var(--line); border-radius: 18px; background: #0d1a3a; color: var(--fg); max-width: min(460px, calc(100vw - 32px)); padding: 22px; }
 dialog::backdrop { background: rgba(2,5,13,0.7); }
 dialog h2 { font-family: var(--font-display); margin: 0 0 10px; font-size: 22px; }
@@ -165,6 +179,7 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     <div class="field arp"><label for="arp">Arpeggio</label><select id="arp"></select></div>
     <div class="field mel"><label for="melody">Melodia</label><select id="melody"></select></div>
     <button class="btn genius" id="genius" type="button" aria-pressed="false" title="Ogni tasto diventa la nota giusta, con l'accordo successivo">🧠 Modalità Genio</button>
+    <button class="btn insp" id="inspBtn" type="button" title="10 melodie che seguono la traccia">💡 Ispirazione</button>
     <button class="btn song" id="newSong" type="button" title="Cambia progressione, arpeggio e melodia">🎲 Nuova canzone</button>
     <span class="spacer"></span>
     <span class="grp">
@@ -172,6 +187,7 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     <button class="btn" id="bpmDown" type="button" aria-label="BPM meno">−</button>
     <span class="bpm" id="bpm">110 BPM</span>
     <button class="btn" id="bpmUp" type="button" aria-label="BPM più">+</button>
+    <button class="btn pro" id="proBtn" type="button" aria-label="Opzioni Pro">✨ Pro</button>
     <button class="btn" id="more" type="button" aria-label="Impostazioni e installazione">⚙︎</button>
     </span>
   </div>
@@ -200,6 +216,35 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     <button class="oct" id="octUp" type="button" aria-label="Ottava su">›</button>
   </div>
 </div>
+
+<dialog id="inspire">
+  <h2>💡 Ispirazione</h2>
+  <p class="pro-note">ChordPilot ascolta una traccia (le note che suoni o il MIDI che riceve), ne ricava tonalità, accordi e ritmo, e propone 10 melodie che la seguono.</p>
+  <div class="row2" style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn play" id="inspRec" type="button">⏺ Registra 4 battute</button>
+    <button class="btn" id="inspFromPlayer" type="button">Usa il Genre Player come traccia</button>
+  </div>
+  <p class="pro-note" id="inspStatus">Premi Registra e suona (o manda MIDI): la registrazione parte dalla prima nota.</p>
+  <div class="insp-cards" id="inspCards"></div>
+  <form method="dialog" style="margin-top:12px"><button class="btn" type="submit">Chiudi</button></form>
+</dialog>
+
+<dialog id="pro">
+  <h2>Opzioni Pro</h2>
+  <p class="pro-note">Funzioni prese dai migliori plug-in simili (Scaler, Captain Chords, InstaChord/Cthulhu). Sono tutte spente di default.</p>
+  <div class="pro-grid">
+    <label class="toggle"><input type="checkbox" id="oneFinger"> 🖐 Accordi con un dito – ogni tasto suona l'accordo della tonalità</label>
+    <label class="toggle"><input type="checkbox" id="scaleLock"> 🔒 Blocca scala – i tasti fuori scala suonano la nota giusta</label>
+    <div class="rowx"><label for="strum">🎸 Strum accordi</label><input type="range" id="strum" min="0" max="120" step="5" value="0"><span class="val" id="strumV">0 ms</span></div>
+    <div class="rowx"><label for="humanize">🤲 Humanize</label><input type="range" id="humanize" min="0" max="100" step="5" value="0"><span class="val" id="humanizeV">0%</span></div>
+    <div class="rowx"><label for="swing">💃 Swing Genre Player</label><input type="range" id="swing" min="0" max="60" step="5" value="0"><span class="val" id="swingV">0%</span></div>
+    <div class="rowx"><label for="transpose">↕︎ Trasponi tastiera</label><input type="range" id="transpose" min="-12" max="12" step="1" value="0"><span class="val" id="transposeV">0</span></div>
+    <div class="field"><label for="voicingStyle">Voicing</label><select id="voicingStyle"></select></div>
+    <button class="btn" id="exportMidi" type="button">⬇︎ Esporta MIDI della canzone (4 giri)</button>
+    <p class="pro-note" id="exportNote">Traccia 1 accompagnamento, traccia 2 melodia. Se il download non parte qui, apri ChordPilot.html dal computer.</p>
+  </div>
+  <form method="dialog"><button class="btn play" type="submit">Chiudi</button></form>
+</dialog>
 
 <dialog id="settings">
   <h2>Impostazioni</h2>
@@ -577,8 +622,15 @@ const CP = (() => {
         m = c; break;
       }
       const pc = mod12(m);
-      let ch = (ctx.chords.find(s => pcs(s.chord).has(pc)) || {}).chord;
-      if (!ch) { const r = this.suggest([m]); ch = r.chords[0] ? r.chords[0].chord : chord(k.tonic, k.minor ? "minor" : "major"); }
+      // Every note gets its own chord: the best next chord of the progression that contains the note,
+      // never the chord just played.
+      const last = this.history[this.history.length - 1];
+      const fresh = s => pcs(s.chord).has(pc) && !(last && loose(s.chord, last));
+      let pick = ctx.chords.find(fresh);
+      if (!pick) pick = this.suggest([m]).chords.find(fresh);
+      if (!pick) pick = ctx.chords.find(s => pcs(s.chord).has(pc));
+      let ch = pick ? pick.chord : chord(k.tonic, k.minor ? "minor" : "major");
+      if (RICH_GENRES.has(this.genre.id) && this.complexity >= 1) ch = adjust(ch, 2);   // 7ths / 9ths
       return { note: m, chord: ch, shift: m - note };
     }
     /// Table for the 12 pitch classes (used by the real-time engines, recomputed as the song moves on).
@@ -799,20 +851,217 @@ const CP = (() => {
     return { events, total, chords, spc };
   }
 
-  /// Chord voiced just below the melody note, with the root in the bass.
-  function geniusVoicing(c, melody) {
-    const out = [];
-    const tones = [...new Set(Q[c.quality].iv.map(i => mod12(c.root + i)))];
-    for (const pc of tones) {
-      let n = melody - 2; while (mod12(n) !== pc) n--;
-      if (n >= melody - 14 && n >= 28) out.push(n);
-    }
-    let b = melody - 17; while (mod12(b) !== c.root) b--;
-    if (b >= 24) out.push(b);
-    return [...new Set(out)].sort((x, y) => x - y);
+  // ---------- Pro options (inspired by Scaler, Captain Chords, InstaChord/Cthulhu) ----------
+  const VOICING_STYLES = ["Automatico", "Stretto", "Aperto", "Drop 2", "Largo"];
+
+  /// One-finger chords: the chord of the key's scale built on the pressed note (black keys = a richer
+  /// version of the nearest lower degree). Returns { root, tones } for each of the 12 pitch classes.
+  function oneFingerTable(engine) {
+    const k = engine.currentKey, st = scaleFor(engine.genre, k);
+    const chords = diatonic(k, st, engine.complexity);
+    return [...Array(12)].map((_, pc) => {
+      let c = chords.find(x => x.root === pc);
+      if (!c) {
+        const lower = chords.filter(x => mod12(pc - x.root) <= 2).sort((a, b) => mod12(pc - a.root) - mod12(pc - b.root))[0] || chords[0];
+        c = adjust(lower, 2);  // richer colour (7th / 9th)
+      }
+      return { root: c.root, quality: c.quality, tones: [...new Set(Q[c.quality].iv.map(i => mod12(c.root + i)))] };
+    });
   }
 
-  return { geniusVoicing, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
+  /// Voices chord tones on top of `rootNote` in the chosen style (1 Stretto, 2 Aperto, 3 Drop 2, 4 Largo).
+  function styleVoicing(tones, root, rootNote, style) {
+    let r = rootNote; while (mod12(r) !== root) r--;
+    const order = [root].concat(tones.filter(t => t !== root));
+    const notes = []; let last = r - 1;
+    for (const t of order) { let n = last + 1; while (mod12(n) !== t) n++; notes.push(n); last = n; }
+    if (style === 2 && notes.length >= 3) notes[1] += 12;
+    if (style === 3 && notes.length >= 4) { const i = notes.length - 2; notes[i] -= 12; }
+    if (style === 4) { for (let i = 1; i < notes.length; i++) notes[i] += 12; }
+    notes.push(r - 12);                     // bass
+    return [...new Set(notes)].filter(n => n >= 21 && n <= 108).sort((a, b) => a - b);
+  }
+
+  /// Scale lock: closest note of the current scale (ties go down).
+  function lockToScale(engine, note) {
+    const k = engine.currentKey, sc = scaleSet(k, scaleFor(engine.genre, k));
+    for (const d of [0, -1, 1, -2, 2]) if (sc.has(mod12(note + d))) return note + d;
+    return note;
+  }
+
+  /// Standard MIDI file (type 1): track 1 accompaniment (ch 1), track 2 melody (ch 2). `loops` repetitions.
+  function patternToMidi(pattern, bpm, loops = 4) {
+    const ppq = 480, perStep = ppq / 4;
+    const vlq = v => { const b = [v & 0x7f]; while ((v >>= 7)) b.unshift((v & 0x7f) | 0x80); return b; };
+    const track = (lane, ch, withTempo) => {
+      const ev = [];
+      for (let l = 0; l < loops; l++) for (const e of pattern.events) if ((e.lane || 0) === lane) {
+        let step = e.step + l * pattern.total;
+        if (e.vel === 0 && e.step === 0) step = (l + 1) * pattern.total;   // wrap-around note-off
+        ev.push([step * perStep, e.vel ? 0x90 | ch : 0x80 | ch, e.note, e.vel]);
+      }
+      ev.sort((a, b) => a[0] - b[0] || (a[1] & 0xf0) - (b[1] & 0xf0));
+      const out = [];
+      if (withTempo) { const us = Math.round(60000000 / bpm); out.push(0, 0xff, 0x51, 3, (us >> 16) & 255, (us >> 8) & 255, us & 255); }
+      let t = 0;
+      for (const [tick, st, n, v] of ev) { out.push(...vlq(tick - t), st, n, v); t = tick; }
+      out.push(0, 0xff, 0x2f, 0);
+      return [0x4d,0x54,0x72,0x6b, (out.length >>> 24) & 255, (out.length >> 16) & 255, (out.length >> 8) & 255, out.length & 255, ...out];
+    };
+    const header = [0x4d,0x54,0x68,0x64, 0,0,0,6, 0,1, 0,2, (ppq >> 8) & 255, ppq & 255];
+    return new Uint8Array([...header, ...track(0, 0, true), ...track(1, 1, false)]);
+  }
+
+  // ---------- Inspiration: 10 melodies that follow a recorded track ----------
+  const INSPIRE_NAMES = ["Contrappunto", "Contrappunto II", "Armonia in terza", "Armonia in sesta", "Risposta",
+    "Eco del motivo", "Hook", "Hook II", "Note guida", "Arpeggio melodico"];
+
+  /// rec: [{step, note, vel, len}] in 16th steps; total = loop length in steps (multiple of 16).
+  function analyzeTrack(genre, rec, total, fixedKey = null) {
+    const bars = Math.max(1, Math.ceil(total / 16));
+    const hist = Array(12).fill(0);
+    rec.forEach(n => hist[mod12(n.note)] += Math.max(1, n.len));
+    const key = fixedKey || detectKey(hist, genre.prefersMinor ? .04 : -.02) || { tonic: genre.defaultTonic, minor: genre.prefersMinor };
+    const st = scaleFor(genre, key), scale = scaleSet(key, st), pk = progressionKey(genre, key);
+    const pool = diatonic(key, st, 1);
+    genre.progressions.forEach(p => p.chords.forEach(rc => { const c = romanChord(rc, pk); if (!pool.some(x => key_(x) === key_(c))) pool.push(c); }));
+    const chords = []; let prev = chord(key.tonic, key.minor ? "minor" : "major");
+    for (let b = 0; b < bars; b++) {
+      const w = Array(12).fill(0); let low = 999;
+      for (const n of rec) {
+        const ov = Math.min(n.step + n.len, (b + 1) * 16) - Math.max(n.step, b * 16);
+        if (ov > 0) { w[mod12(n.note)] += ov; low = Math.min(low, n.note); }
+      }
+      if (w.every(x => x === 0)) { chords.push(prev); continue; }
+      let best = prev, bs = -1e9;
+      for (const c of pool) {
+        const cp = pcs(c); let sc = 0;
+        w.forEach((x, pc) => sc += cp.has(pc) ? x : -0.5 * x);
+        if (low < 999 && mod12(low) === c.root) sc += 2;
+        if (sc > bs) { bs = sc; best = c; }
+      }
+      chords.push(best); prev = best;
+    }
+    // top line: highest note starting at each step
+    const top = Array(total).fill(null);
+    rec.forEach(n => { if (n.step < total && (!top[n.step] || n.note > top[n.step].note)) top[n.step] = n; });
+    const onsets = Array(total).fill(false); rec.forEach(n => { if (n.step < total) onsets[n.step] = true; });
+    const tops = top.filter(Boolean).map(n => n.note).sort((a, b) => a - b);
+    const median = tops.length ? tops[Math.floor(tops.length / 2)] : genre.octave + 7;
+    return { key, scale, st, chords, top, onsets, median, total, pk };
+  }
+  const key_ = c => c.root + ":" + c.quality;
+
+  function inspire(genre, rec, total, fixedKey = null, seed = 0) {
+    const A = analyzeTrack(genre, rec, total, fixedKey);
+    const gi = GENRES.indexOf(genre);
+    const center = A.median < 60 ? A.median + 12 : A.median + 3;
+    const lo = center - 9, hi = center + 12;
+    const notes = []; for (let n = lo; n <= hi; n++) if (A.scale.has(mod12(n))) notes.push(n);
+    const near = (n, set) => { let b = n, d = 99; for (const m of notes) if (set.has(mod12(m)) && Math.abs(m - n) < d) { d = Math.abs(m - n); b = m; } return b; };
+    const stepScale = (n, k) => { let i = notes.indexOf(near(n, A.scale)); i = Math.max(0, Math.min(notes.length - 1, i + k)); return notes[i]; };
+    const chordAt = s => pcs(A.chords[Math.min(A.chords.length - 1, Math.floor(s / 16))]);
+    const srcLine = A.top.map((n, s) => n ? { s, note: n.note, len: n.len } : null).filter(Boolean);
+    const out = [];
+    const pool = rhythmPool(genre.id);
+    for (let opt = 0; opt < 10; opt++) {
+      const R = rng((songSeed(gi, 40 + opt, opt, seed) ^ (rec.length * 2654435761)) >>> 0);
+      const mel = [];   // {step, note, len, vel}
+      const push = (step, note, len, vel = 90) => { if (step < total && note >= 21 && note <= 108) mel.push({ step, note, len: Math.max(1, Math.min(len, total - step)), vel }); };
+      if (opt <= 1) {                       // counterpoint: fills the gaps, contrary motion
+        const rh = pool[(R(pool.length) + opt * 5) % pool.length];
+        let n = near(center, chordAt(0)), lastSrc = null;
+        for (let s = 0; s < total; s++) {
+          if (rh[s % 16] !== "x") continue;
+          if (A.onsets[s] && s % 4 !== 0 && R(3) !== 0) continue;
+          let e = s + 1; while (e < total && rh[e % 16] === "-") e++;
+          const src = A.top[s];
+          if (src && lastSrc !== null) n = stepScale(n, src.note > lastSrc ? -1 - R(2) : src.note < lastSrc ? 1 + R(2) : (R(2) ? 1 : -1));
+          else n = stepScale(n, R(3) - 1);
+          if (src) lastSrc = src.note;
+          if (s % 8 === 0) n = near(n, chordAt(s));
+          if (src && [1, 2].includes(Math.abs(n - src.note) % 12)) n = near(n + 3, chordAt(s));
+          push(s, n, e - s, s % 4 === 0 ? 96 : 82);
+        }
+      } else if (opt <= 3) {                // parallel harmony a third / a sixth above the track's top line
+        const k = opt === 2 ? 2 : 5;
+        for (const x of srcLine) {
+          let n = x.note; for (let i = 0; i < k; i++) { n++; while (!A.scale.has(mod12(n))) n++; }
+          while (n > hi + 5) n -= 12; while (n < lo) n += 12;
+          push(x.s, n, x.len, 84);
+        }
+      } else if (opt === 4) {               // call & response: answers in the half-bars where the track rests
+        for (let w = 0; w < total; w += 8) {
+          const busy = A.onsets.slice(w, w + 8).some(Boolean);
+          if (busy && !(w % 16 === 8 && R(2) === 0)) continue;
+          const motif = srcLine.filter(x => x.s >= w - 8 && x.s < w).map(x => ({ off: x.s - (w - 8), note: x.note, len: x.len }));
+          if (motif.length) motif.forEach(m => push(w + m.off, near(stepScale(m.note, 2) + (m.note < lo ? 12 : 0), chordAt(w + m.off)), Math.min(m.len, 8 - m.off), 86));
+          else { let n = near(center, chordAt(w)); [0, 2, 4, 6].forEach(o => { push(w + o, n, 2, 84); n = stepScale(n, R(3) - 1); }); }
+        }
+      } else if (opt === 5) {               // echo: the track's motif an eighth later and an octave up
+        for (const x of srcLine) {
+          let n = x.note + 12; while (n > hi + 5) n -= 12; while (n < lo) n += 12;
+          push(x.s + 2, near(n, A.scale), Math.max(1, x.len - 1), 72);
+        }
+      } else if (opt <= 7) {                // hook built on the track's own chords
+        const ev = melodyEvents(genre, gi, A.key, A.chords, -1, (opt * 7 + R(30)) % MELODY_COUNT, seed + opt, 16);
+        const ons = ev.filter(e => e.vel > 0);
+        ons.forEach(e => {
+          const off = ev.find(o => o.vel === 0 && o.note === e.note && (o.step > e.step || o.step === 0));
+          const len = off ? ((off.step === 0 ? total : off.step) - e.step) : 2;
+          push(e.step, e.note, len, e.vel);
+        });
+      } else if (opt === 8) {               // guide tones: 3rds and 7ths, half notes, smooth voice-leading
+        let n = center;
+        for (let s = 0; s < total; s += 8) {
+          const c = A.chords[Math.min(A.chords.length - 1, Math.floor(s / 16))], iv = Q[c.quality].iv;
+          const guide = new Set([mod12(c.root + iv[1]), mod12(c.root + (iv[3] ?? iv[2]))]);
+          n = near(n, guide); push(s, n, 8, 80);
+        }
+      } else {                              // melodic arpeggio in eighths
+        for (let s = 0; s < total; s += 2) {
+          const c = A.chords[Math.min(A.chords.length - 1, Math.floor(s / 16))];
+          const tones = notes.filter(m => pcs(c).has(mod12(m)) && m >= center - 3 && m <= center + 10);
+          if (!tones.length) continue;
+          const i = Math.floor(s / 2) % (tones.length * 2 - 1 || 1);
+          const idx = i < tones.length ? i : tones.length * 2 - 2 - i;
+          push(s, tones[Math.max(0, idx)], 2, s % 4 === 0 ? 88 : 74);
+        }
+      }
+      // remove overlaps (monophonic line) and build events
+      mel.sort((a, b) => a.step - b.step);
+      const events = [];
+      mel.forEach((m, i) => {
+        const next = mel[i + 1];
+        let end = m.step + m.len; if (next && next.step < end) end = next.step;
+        if (end <= m.step) return;
+        events.push({ step: m.step, note: m.note, vel: m.vel, lane: 1 }, { step: end >= total ? 0 : end, note: m.note, vel: 0, lane: 1 });
+      });
+      events.sort((a, b) => a.step === b.step ? ((a.vel === 0) === (b.vel === 0) ? 0 : a.vel === 0 ? -1 : 1) : a.step - b.step);
+      out.push({ name: INSPIRE_NAMES[opt], events, total });
+    }
+    return { analysis: A, options: out };
+  }
+
+  const RICH_GENRES = new Set(["jazz", "rnb", "gospel", "lofi", "latin", "house", "melodictechno", "afrohouse", "cinematic"]);
+
+  /// Pianist voicing under the melody note: right hand = up to 3 chord tones just below the melody
+  /// (3rd and 7th first, then 5th / 9th / root), left hand = root in the bass plus fifth or octave.
+  function geniusVoicing(c, melody) {
+    const tones = [...new Set(Q[c.quality].iv.map(i => mod12(c.root + i)))];
+    const rank = t => { const r = mod12(t - c.root); return [3, 4, 10, 11].includes(r) ? 0 : r === 7 || r === 6 || r === 8 ? 1 : r === 2 || r === 9 || r === 5 ? 2 : 3; };
+    const ordered = tones.filter(t => t !== mod12(melody)).sort((a, b) => rank(a) - rank(b)).slice(0, 3);
+    const rh = [];
+    for (const pc of ordered) { let n = melody - 1; while (mod12(n) !== pc) n--; if (n >= melody - 11) rh.push(n); }
+    const low = rh.length ? Math.min(...rh) : melody;
+    let r = Math.min(low - 3, 52); while (mod12(r) !== c.root) r--;
+    if (r < 28) r += 12;
+    const lh = [r];
+    if (r + 7 < low - 2) lh.push(r + 7); else if (r + 12 < low - 2) lh.push(r + 12);
+    return [...new Set(lh.concat(rh))].filter(n => n >= 24 && n < melody).sort((x, y) => x - y);
+  }
+
+  return { inspire, analyzeTrack, INSPIRE_NAMES, geniusVoicing, VOICING_STYLES, oneFingerTable, styleVoicing, lockToScale, patternToMidi, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
            GENRES, PIANOS, SCALE_NAMES, Engine, buildPattern, prefersFlats, pcs, ARPEGGIOS, MELODY_NAMES, MELODY_COUNT, rng };
 })();
 if (typeof module !== "undefined") module.exports = CP;
@@ -832,7 +1081,8 @@ if (typeof module !== "undefined") module.exports = CP;
     key: store.get("key", 0), complexity: store.get("cx", 1), italian: store.get("it", true),
     hints: store.get("hints", true), octaves: store.get("oct", 3), low: store.get("low", 48),
     prog: 0, bpm: CP.GENRES[0].bpm, playing: false, midiOut: true,
-    arp: store.get("arp", -1), melody: store.get("mel", -1), seed: store.get("seed", 0), genius: store.get("genius", false)
+    arp: store.get("arp", -1), melody: store.get("mel", -1), seed: store.get("seed", 0), genius: store.get("genius", false),
+    oneFinger: false, scaleLock: false, strum: 0, humanize: 0, swing: 0, transpose: 0, voicingStyle: 0
   };
   state.bpm = CP.GENRES[state.genre].bpm;
   const engine = new CP.Engine(CP.GENRES[state.genre]);
@@ -952,35 +1202,82 @@ if (typeof module !== "undefined") module.exports = CP;
   function geniusChordOff() {
     geniusNotes.forEach(x => { voiceOff(x, 4); sendMIDI([0x82, x, 0]); }); geniusNotes = []; geniusChord = null;
   }
-  function noteDown(pressed, vel, echo = true) {
+  // One-finger chords: pressed key → chord notes.
+  const oneFingerHeld = new Map();
+  const humanVel = v => Math.max(1, Math.min(127, Math.round(v + (Math.random() * 2 - 1) * 14 * state.humanize / 100)));
+  const humanTime = () => Math.random() * 0.025 * state.humanize / 100;
+  function playStrummed(notes, vel, lane, midiCh) {
+    const t0 = ctx.currentTime;
+    notes.forEach((x, i) => {
+      const dt = (state.strum / 1000) * i + humanTime(), v = humanVel(vel);
+      voiceOn(x, v, lane, t0 + dt);
+      setTimeout(() => sendMIDI([0x90 | midiCh, x, v]), dt * 1000);
+    });
+  }
+  // Inspiration recording: notes that actually sound, in 16th steps from the first note.
+  let inspRec = null;
+  function recOn(n, vel) {
+    if (!inspRec) return;
+    const now = performance.now();
+    if (inspRec.t0 === null) inspRec.t0 = now;
+    const step = Math.round((now - inspRec.t0) / (60000 / state.bpm / 4));
+    if (step >= inspRec.total) return;
+    inspRec.open.set(n, { step, note: n, vel });
+  }
+  function recOff(n) {
+    if (!inspRec || !inspRec.open.has(n)) return;
+    const o = inspRec.open.get(n); inspRec.open.delete(n);
+    const step = Math.round((performance.now() - inspRec.t0) / (60000 / state.bpm / 4));
+    inspRec.notes.push({ ...o, len: Math.max(1, Math.min(step, inspRec.total) - o.step) });
+  }
+  function noteDown(rawPressed, vel, echo = true) {
     audio();
-    let n = pressed;
+    const pressed = Math.max(0, Math.min(127, rawPressed + state.transpose));
+    if (state.oneFinger) {
+      const t = CP.oneFingerTable(engine)[CP.mod12(pressed)];
+      const notes = CP.styleVoicing(t.tones, t.root, pressed, Math.max(1, state.voicingStyle));
+      oneFingerHeld.set(rawPressed, notes);
+      playStrummed(notes, vel, 0, 0);
+      notes.forEach(x => { held.add(x); engine.noteOn(x, vel); recOn(x, vel); });
+      changed();
+      return;
+    }
+    let n = state.scaleLock && !state.genius ? CP.lockToScale(engine, pressed) : pressed;
+    if (n !== rawPressed) pressedToSounding.set(rawPressed, n);
     if (state.genius) {
       const g = engine.genius(pressed);
       n = g.note;
       const now = performance.now();
       clearTimeout(geniusRelease);
-      const keep = geniusChord && CP.pcs(geniusChord).has(CP.mod12(n)) && now - geniusAt < 1500;
+      // Fast melodic runs keep the chord; otherwise every note gets its own chord.
+      const keep = geniusChord && CP.pcs(geniusChord).has(CP.mod12(n)) && now - geniusAt < 180;
       if (!keep) {
         geniusChordOff();
         geniusChord = g.chord; geniusAt = now;
         geniusNotes = CP.geniusVoicing(g.chord, n);
-        geniusNotes.forEach(x => { voiceOn(x, Math.round(vel * 0.62), 4); sendMIDI([0x92, x, Math.round(vel * 0.62)]); });
+        playStrummed(geniusNotes, Math.round(vel * 0.62), 4, 2);
         engine.commit(g.chord); lastCommitted = g.chord;
       }
-      pressedToSounding.set(pressed, n);
+      pressedToSounding.set(rawPressed, n);
     }
     if (held.has(n)) voiceOff(n, 0, undefined, 0.02);
     voiceOn(n, vel, 0);
     if (echo || state.genius) sendMIDI([0x90, n, vel]);
-    held.add(n); engine.noteOn(n, vel);
+    held.add(n); engine.noteOn(n, vel); recOn(n, vel);
     changed();
   }
   function noteUp(pressed, echo = true) {
+    if (oneFingerHeld.has(pressed)) {
+      const notes = oneFingerHeld.get(pressed); oneFingerHeld.delete(pressed);
+      const still = new Set([...oneFingerHeld.values()].flat());
+      notes.forEach(x => { if (still.has(x)) return; held.delete(x); recOff(x); if (sustain) sustained.add(x); else voiceOff(x, 0); sendMIDI([0x80, x, 0]); });
+      changed();
+      return;
+    }
     const n = pressedToSounding.has(pressed) ? pressedToSounding.get(pressed) : pressed;
     pressedToSounding.delete(pressed);
     if (!held.has(n) || [...pressedToSounding.values()].includes(n)) return;
-    held.delete(n);
+    held.delete(n); recOff(n);
     if (sustain) sustained.add(n); else voiceOff(n, 0);
     if (echo || state.genius) sendMIDI([0x80, n, 0]);
     if (state.genius && held.size === 0) { clearTimeout(geniusRelease); geniusRelease = setTimeout(geniusChordOff, 1800); }
@@ -997,9 +1294,10 @@ if (typeof module !== "undefined") module.exports = CP;
   }
   function playSuggestion(s) {
     audio();
-    const notes = s.voicing.slice();
+    let notes = s.voicing.slice();
     let b = Math.floor(notes[0] / 12) * 12 + s.chord.root; while (b >= notes[0]) b -= 12; if (b >= 24) notes.unshift(b);
-    notes.forEach(n => { voiceOn(n, 96, 2); sendMIDI([0x90, n, 96]); });
+    if (state.voicingStyle > 0) notes = CP.styleVoicing([...CP.pcs(s.chord)], s.chord.root, s.voicing[0] + 12, state.voicingStyle);
+    playStrummed(notes, 96, 2, 0);
     setTimeout(() => notes.forEach(n => { voiceOff(n, 2); sendMIDI([0x80, n, 0]); }), 900);
     engine.didPlay(s.voicing, s.chord); lastCommitted = s.chord;
     recompute();
@@ -1024,6 +1322,13 @@ if (typeof module !== "undefined") module.exports = CP;
     patternOn.forEach(n => { voiceOff(n, 1); sendMIDI([0x80, n, 0]); }); patternOn.clear();
     melodyOn.forEach(n => { voiceOff(n, 3); sendMIDI([0x81, n, 0]); }); melodyOn.clear();
   }
+  function startCustom(p) {
+    if (state.playing) stopPattern();
+    audio(); pattern = p;
+    state.playing = true; nextStep = 0; nextTime = ctx.currentTime + 0.06;
+    $("play").setAttribute("aria-pressed", "true"); $("play").textContent = "■ Stop";
+    timer = setInterval(schedule, 25); schedule();
+  }
   function startPattern() {
     audio(); rebuildPattern();
     state.playing = true; nextStep = 0; nextTime = ctx.currentTime + 0.06;
@@ -1034,10 +1339,15 @@ if (typeof module !== "undefined") module.exports = CP;
     const spb = 60 / state.bpm / 4;
     while (nextTime < ctx.currentTime + 0.12) {
       const s = nextStep % pattern.total, t = nextTime;
+      const sw = (s % 2 === 1) ? spb * state.swing / 100 : 0;   // swing delays the off-beat 16ths
+      let chordIdx2 = 0;
       for (const e of pattern.events) {
         if (e.step !== s) continue;
         const lane = e.lane === 1 ? 3 : 1;
-        if (e.vel > 0) voiceOn(e.note, e.vel, lane, t); else voiceOff(e.note, lane, t);
+        if (e.vel > 0) {
+          const strumDt = e.lane === 1 ? 0 : (state.strum / 1000) * (chordIdx2++);
+          voiceOn(e.note, humanVel(e.vel), lane, t + sw + strumDt + humanTime());
+        } else voiceOff(e.note, lane, t + sw);
       }
       const delay = Math.max(0, (t - ctx.currentTime) * 1000);
       const evs = pattern.events.filter(e => e.step === s);
@@ -1192,6 +1502,105 @@ if (typeof module !== "undefined") module.exports = CP;
   function applyKey() { engine.fixedKey = state.key === 0 ? null : { tonic: Math.abs(state.key) - 1, minor: state.key < 0 }; }
   $("genre").value = state.genre; $("piano").value = state.piano; $("key").value = state.key;
   $("arp").value = state.arp; $("melody").value = state.melody;
+  CP.VOICING_STYLES.forEach((v, i) => $("voicingStyle").add(new Option(v, i)));
+  $("proBtn").addEventListener("click", () => $("pro").showModal());
+  // ---- Inspiration ----
+  let inspSource = null, inspResult = null;
+  const recToEvents = (rec, total) => {
+    const ev = [];
+    rec.forEach(n => { const end = n.step + n.len; ev.push({ step: n.step, note: n.note, vel: n.vel, lane: 0 }, { step: end >= total ? 0 : end, note: n.note, vel: 0, lane: 0 }); });
+    return ev;
+  };
+  function showInspiration(rec, total) {
+    inspSource = { rec, total };
+    inspResult = CP.inspire(CP.GENRES[state.genre], rec, total, engine.fixedKey);
+    const a = inspResult.analysis, flats = CP.prefersFlats(a.key);
+    $("inspStatus").textContent = "Traccia: " + noteName(a.key.tonic, flats) + (a.key.minor ? " minore" : " maggiore") +
+      " · accordi " + a.chords.map(c => cName(c)).join(" – ") + ". Scegli una melodia:";
+    const box = $("inspCards"); box.textContent = "";
+    inspResult.options.forEach((o, i) => {
+      const card = document.createElement("div"); card.className = "insp-card";
+      card.innerHTML = `<b>${i + 1}. ${o.name}</b><div class="row2"><button class="btn play" type="button">▶ Ascolta</button><button class="btn" type="button">⬇ MIDI</button></div>`;
+      const [play, dl] = card.querySelectorAll("button");
+      play.addEventListener("click", () => {
+        document.querySelectorAll(".insp-card").forEach(c => c.classList.remove("on")); card.classList.add("on");
+        const evs = recToEvents(rec, total).concat(o.events).sort((x, y) => x.step === y.step ? ((x.vel === 0) === (y.vel === 0) ? 0 : x.vel === 0 ? -1 : 1) : x.step - y.step);
+        startCustom({ events: evs, total, chords: a.chords, spc: 16 });
+      });
+      dl.addEventListener("click", () => exportPattern({ events: recToEvents(rec, total).concat(o.events), total }, "ChordPilot-ispirazione-" + (i + 1) + ".mid"));
+      box.appendChild(card);
+    });
+  }
+  $("inspBtn").addEventListener("click", () => $("inspire").showModal());
+  $("inspRec").addEventListener("click", () => {
+    if (inspRec) return;
+    inspRec = { t0: null, total: 64, open: new Map(), notes: [] };
+    $("inspStatus").textContent = "⏺ Registrazione: suona 4 battute a " + state.bpm + " BPM…";
+    const check = setInterval(() => {
+      if (inspRec.t0 === null) return;
+      const steps = (performance.now() - inspRec.t0) / (60000 / state.bpm / 4);
+      $("inspStatus").textContent = "⏺ Battuta " + Math.min(4, Math.floor(steps / 16) + 1) + " di 4…";
+      if (steps >= inspRec.total) {
+        clearInterval(check);
+        inspRec.open.forEach((o, n) => recOff(n));
+        const r = inspRec; inspRec = null;
+        if (!r.notes.length) { $("inspStatus").textContent = "Nessuna nota registrata: riprova."; return; }
+        showInspiration(r.notes, r.total);
+      }
+    }, 100);
+  });
+  $("inspFromPlayer").addEventListener("click", () => {
+    if (!pattern) rebuildPatternSilently();
+    const rec = [], open = new Map();
+    for (const e of pattern.events) {
+      const k = (e.lane || 0) + ":" + e.note;
+      if (e.vel > 0) open.set(k, e);
+      else if (open.has(k)) { const o = open.get(k); open.delete(k); rec.push({ step: o.step, note: o.note, vel: o.vel, len: Math.max(1, (e.step === 0 ? pattern.total : e.step) - o.step) }); }
+    }
+    showInspiration(rec, pattern.total);
+  });
+  $("oneFinger").addEventListener("change", e => { state.oneFinger = e.target.checked; });
+  $("scaleLock").addEventListener("change", e => { state.scaleLock = e.target.checked; });
+  const slider = (id, key, fmt) => $(id).addEventListener("input", e => { state[key] = +e.target.value; $(id + "V").textContent = fmt(state[key]); });
+  slider("strum", "strum", v => v + " ms"); slider("humanize", "humanize", v => v + "%");
+  slider("swing", "swing", v => v + "%"); slider("transpose", "transpose", v => (v > 0 ? "+" : "") + v);
+  $("voicingStyle").addEventListener("change", e => { state.voicingStyle = +e.target.value; });
+  // Minimal ZIP (stored) so the MIDI file can go through the viewer's download confirmation.
+  function zipOne(name, data) {
+    const crcTable = [...Array(256)].map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+    let crc = 0xFFFFFFFF; for (const b of data) crc = crcTable[(crc ^ b) & 255] ^ (crc >>> 8); crc = (crc ^ 0xFFFFFFFF) >>> 0;
+    const nm = new TextEncoder().encode(name);
+    const u16 = v => [v & 255, (v >> 8) & 255], u32 = v => [v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255];
+    const local = [...u32(0x04034b50), ...u16(20), 0, 0, 0, 0, 0, 0, 0, 0x21, ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nm.length), 0, 0, ...nm];
+    const central = [...u32(0x02014b50), ...u16(20), ...u16(20), 0, 0, 0, 0, 0, 0, 0, 0x21, ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nm.length), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...u32(0), ...nm];
+    const end = [...u32(0x06054b50), 0, 0, 0, 0, 1, 0, 1, 0, ...u32(central.length), ...u32(local.length + data.length), 0, 0];
+    return new Uint8Array([...local, ...data, ...central, ...end]);
+  }
+  let downloadsApi = null;
+  if (window.claude && window.claude.use) window.claude.use("downloads").then(d => { downloadsApi = d; }).catch(() => {});
+  $("exportMidi").addEventListener("click", () => {
+    if (!pattern) rebuildPatternSilently();
+    const g = CP.GENRES[state.genre];
+    exportPattern(pattern, `ChordPilot-${g.id}-${state.arp >= 0 ? "arp" + (state.arp + 1) : "ritmo"}-${state.melody >= 0 ? "mel" + (state.melody + 1) : "nomel"}.mid`);
+  });
+  async function exportPattern(pat, name) {
+    const data = CP.patternToMidi(pat, state.bpm, 4);
+    if (downloadsApi) {
+      try {
+        await downloadsApi.save({ filename: name.replace(/\.mid$/, ".zip"), data: zipOne(name, data) });
+        $("exportNote").textContent = "Salvato: lo zip contiene " + name + " (traccia 1 accompagnamento, traccia 2 melodia).";
+      } catch (e) {
+        $("exportNote").textContent = e && e.code === "declined" ? "Download annullato." : "Download non disponibile qui: apri ChordPilot.html dal computer.";
+      }
+      return;
+    }
+    try {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([data], { type: "audio/midi" })); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      $("exportNote").textContent = "Creato " + name + " (traccia 1 accompagnamento, traccia 2 melodia). Se il download non parte qui, apri ChordPilot.html dal computer.";
+    } catch { $("exportNote").textContent = "Download non disponibile in questa finestra: apri ChordPilot.html dal computer."; }
+  }
   const paintGenius = () => { $("genius").setAttribute("aria-pressed", String(state.genius)); document.body.classList.toggle("genius-on", state.genius); };
   paintGenius();
   $("genius").addEventListener("click", () => { state.genius = !state.genius; store.set("genius", state.genius); if (!state.genius) geniusChordOff(); paintGenius(); });
@@ -1201,10 +1610,7 @@ if (typeof module !== "undefined") module.exports = CP;
   $("newSong").addEventListener("click", () => {
     const g = CP.GENRES[state.genre], r = CP.rng((Date.now() ^ (state.seed * 2654435761)) >>> 0);
     state.prog = r(g.progressions.length); state.arp = r(30); state.melody = r(CP.MELODY_COUNT); state.seed = 1 + r(9999);
-    $("arp").value = state.arp; $("melody").value = state.melody;
-  const paintGenius = () => { $("genius").setAttribute("aria-pressed", String(state.genius)); document.body.classList.toggle("genius-on", state.genius); };
-  paintGenius();
-  $("genius").addEventListener("click", () => { state.genius = !state.genius; store.set("genius", state.genius); if (!state.genius) geniusChordOff(); paintGenius(); }); $("prog").value = state.prog;
+    $("arp").value = state.arp; $("melody").value = state.melody; $("prog").value = state.prog;
     store.set("arp", state.arp); store.set("mel", state.melody); store.set("seed", state.seed);
     afterChange();
     if (!state.playing) startPattern();

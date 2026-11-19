@@ -72,8 +72,102 @@ struct AuroraBackground: View {
 }
 
 /// The complete ChordPilot interface, used both by the standalone app and inside DAWs (AUv3 view).
+/// Pro options sheet: extras found in Scaler, Captain Chords and InstaChord/Cthulhu. All off by default.
+struct ProOptionsView: View {
+    @ObservedObject var controller: ChordPilotController
+    @Environment(\.dismiss) private var dismiss
+    @State private var midiURL: URL?
+
+    private func toggle(_ a: ParamAddress) -> Binding<Bool> {
+        Binding(get: { controller.proValue(a) > 0.5 }, set: { controller.setPro(a, $0 ? 1 : 0) })
+    }
+    private func value(_ a: ParamAddress) -> Binding<Double> {
+        Binding(get: { controller.proValue(a) }, set: { controller.setPro(a, $0) })
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(footer: Text("Funzioni prese dai migliori plug-in simili (Scaler, Captain Chords, InstaChord/Cthulhu).")) {
+                    Toggle("🖐 Accordi con un dito", isOn: toggle(.oneFinger))
+                    Toggle("🔒 Blocca scala", isOn: toggle(.scaleLock))
+                }
+                Section("Suono") {
+                    VStack(alignment: .leading) {
+                        Text("🎸 Strum accordi: \(Int(controller.proValue(.strum))) ms")
+                        Slider(value: value(.strum), in: 0...120, step: 5)
+                    }
+                    VStack(alignment: .leading) {
+                        Text("🤲 Humanize: \(Int(controller.proValue(.humanize)))%")
+                        Slider(value: value(.humanize), in: 0...100, step: 5)
+                    }
+                    VStack(alignment: .leading) {
+                        Text("💃 Swing Genre Player: \(Int(controller.proValue(.swing)))%")
+                        Slider(value: value(.swing), in: 0...60, step: 5)
+                    }
+                    Stepper("↕︎ Trasponi tastiera: \(Int(controller.proValue(.transpose)))", value: value(.transpose), in: -12...12, step: 1)
+                    Picker("Voicing", selection: Binding(get: { Int(controller.proValue(.voicing)) }, set: { controller.setPro(.voicing, Double($0)) })) {
+                        ForEach(Array(SuggestionEngine.voicingStyles.enumerated()), id: \.offset) { i, v in Text(v).tag(i) }
+                    }
+                }
+                Section(footer: Text("Traccia 1 accompagnamento, traccia 2 melodia. Condividi verso GarageBand, Logic, AUM, File…")) {
+                    Button("Prepara MIDI della canzone (4 giri)") { midiURL = controller.exportMIDI() }
+                    if let url = midiURL {
+                        ShareLink(item: url) { Label("Condividi \(url.lastPathComponent)", systemImage: "square.and.arrow.up") }
+                    }
+                }
+            }
+            .navigationTitle("Opzioni Pro")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fine") { dismiss() } } }
+        }
+    }
+}
+
+/// Inspiration sheet: record the track (what you play or the MIDI the plug-in receives), get 10 melodies.
+struct InspirationView: View {
+    @ObservedObject var controller: ChordPilotController
+    @Environment(\.dismiss) private var dismiss
+    @State private var shareURLs: [Int: URL] = [:]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section(footer: Text(controller.inspireStatus)) {
+                    HStack {
+                        Button("⏺ Registra 4 battute") { controller.startInspiration(bars: 4) }.buttonStyle(.borderedProminent)
+                        Button("8 battute") { controller.startInspiration(bars: 8) }.buttonStyle(.bordered)
+                        Button("Usa il Genre Player") { controller.inspirationFromPlayer() }.buttonStyle(.bordered)
+                    }
+                }
+                if !controller.inspireOptions.isEmpty {
+                    Section("10 melodie che seguono la traccia") {
+                        ForEach(Array(controller.inspireOptions.enumerated()), id: \.offset) { i, o in
+                            HStack {
+                                Text("\(i + 1). \(o.name)").font(.headline)
+                                Spacer()
+                                Button { controller.playInspiration(i) } label: { Label("Ascolta", systemImage: "play.fill") }
+                                    .buttonStyle(.bordered)
+                                if let url = shareURLs[i] {
+                                    ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+                                } else {
+                                    Button { shareURLs[i] = controller.exportInspiration(i) } label: { Image(systemName: "doc.badge.arrow.up") }
+                                        .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("💡 Ispirazione")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fine") { dismiss() } } }
+        }
+    }
+}
+
 public struct ChordPilotView: View {
     @ObservedObject var controller: ChordPilotController
+    @State private var showPro = false
+    @State private var showInspiration = false
     var trailingToolbar: AnyView?
 
     public init(controller: ChordPilotController, trailingToolbar: AnyView? = nil) {
@@ -299,6 +393,22 @@ public struct ChordPilotView: View {
                         .shadow(color: controller.genius ? Aurora.green.opacity(0.6) : .clear, radius: 10)
                 }
                 .accessibilityLabel(controller.genius ? "Disattiva Modalità Genio" : "Attiva Modalità Genio")
+                Button { showInspiration = true } label: {
+                    Label("Ispirazione", systemImage: "lightbulb.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(Capsule().stroke(Color(hex: 0xFFC233).opacity(0.7), lineWidth: 1))
+                        .foregroundColor(.white)
+                }
+                .sheet(isPresented: $showInspiration) { InspirationView(controller: controller) }
+                Button { showPro = true } label: {
+                    Label("Pro", systemImage: "sparkles")
+                        .font(.system(size: 14, weight: .bold))
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(Capsule().stroke(Aurora.cyan.opacity(0.6), lineWidth: 1))
+                        .foregroundColor(.white)
+                }
+                .sheet(isPresented: $showPro) { ProOptionsView(controller: controller) }
                 if controller.song > 0 {
                     Text("Canzone #\(controller.song)").font(.system(size: 12, weight: .bold)).foregroundColor(Aurora.pink)
                 }

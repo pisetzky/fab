@@ -439,23 +439,93 @@ Engine::GeniusChoice Engine::genius(int note) {
         m = c; break;
     }
     int pc = mod12(m);
-    for (auto& s : ctx.chords) if (s.chord.pcs().count(pc)) return { m, s.chord, m - note };
-    Result r = suggest({ m });
-    Chord ch = r.chords.empty() ? makeChord(k.tonic, qualityIndex(k.minor ? "minor" : "major")) : r.chords[0].chord;
+    // Every note gets its own chord: the best next chord containing the note, never the chord just played.
+    const Chord* last = history.empty() ? nullptr : &history.back();
+    auto fresh = [&](const Suggestion& s) { return s.chord.pcs().count(pc) && !(last && s.chord.loose(*last)); };
+    std::optional<Chord> pick;
+    for (auto& s : ctx.chords) if (fresh(s)) { pick = s.chord; break; }
+    if (!pick) { Result r = suggest({ m }); for (auto& s : r.chords) if (fresh(s)) { pick = s.chord; break; } }
+    if (!pick) for (auto& s : ctx.chords) if (s.chord.pcs().count(pc)) { pick = s.chord; break; }
+    Chord ch = pick ? *pick : makeChord(k.tonic, qualityIndex(k.minor ? "minor" : "major"));
+    static const std::set<std::string> rich = { "jazz", "rnb", "gospel", "lofi", "latin", "house", "melodictechno", "afrohouse", "cinematic" };
+    if (rich.count(genre->id) && complexity >= 1) ch = adjust(ch, 2);
     return { m, ch, m - note };
 }
 
-int geniusVoicing(const int* tones, int numTones, int root, int melody, int* out) {
-    int count = 0;
-    for (int i = 0; i < numTones; ++i) {
-        int n = melody - 2; while (mod12(n) != tones[i]) --n;
-        if (n >= melody - 14 && n >= 28) {
-            bool dup = false; for (int j = 0; j < count; ++j) dup |= out[j] == n;
-            if (!dup) out[count++] = n;
+const char* const kVoicingStyles[5] = { "Automatico", "Stretto", "Aperto", "Drop 2", "Largo" };
+
+std::vector<OneFingerChord> oneFingerTable(const Engine& e) {
+    Key k = e.currentKey();
+    auto chords = diatonic(k, scaleFor(*e.genre, k), e.complexity);
+    std::vector<OneFingerChord> out;
+    for (int pc = 0; pc < 12; ++pc) {
+        const Chord* found = nullptr;
+        for (auto& c : chords) if (c.root == pc) found = &c;
+        Chord c;
+        if (found) c = *found;
+        else {
+            int bestD = 99; Chord lower = chords.empty() ? makeChord(k.tonic, 0) : chords[0];
+            for (auto& x : chords) { int d = mod12(pc - x.root); if (d <= 2 && d < bestD) { bestD = d; lower = x; } }
+            c = adjust(lower, 2);
         }
+        OneFingerChord o { c.root, c.quality, {} };
+        for (int iv : qualities()[(size_t) c.quality].iv) {
+            int t = mod12(c.root + iv);
+            if (std::find(o.tones.begin(), o.tones.end(), t) == o.tones.end()) o.tones.push_back(t);
+        }
+        out.push_back(o);
     }
-    int b = melody - 17; while (mod12(b) != root) --b;
-    if (b >= 24) out[count++] = b;
+    return out;
+}
+
+int lockToScale(const Engine& e, int note) {
+    Key k = e.currentKey();
+    auto sc = scaleSet(k, scaleFor(*e.genre, k));
+    for (int d : { 0, -1, 1, -2, 2 }) if (sc.count(mod12(note + d))) return note + d;
+    return note;
+}
+
+int styleVoicing(const int* tones, int numTones, int root, int rootNote, int style, int* out) {
+    int r = rootNote; while (mod12(r) != root) --r;
+    int count = 0, last = r - 1;
+    int order[8]; int no = 0; order[no++] = root;
+    for (int i = 0; i < numTones && no < 7; ++i) if (tones[i] != root) order[no++] = tones[i];
+    for (int i = 0; i < no; ++i) { int n = last + 1; while (mod12(n) != order[i]) ++n; out[count++] = n; last = n; }
+    if (style == 2 && count >= 3) out[1] += 12;
+    if (style == 3 && count >= 4) out[count - 2] -= 12;
+    if (style == 4) for (int i = 1; i < count; ++i) out[i] += 12;
+    out[count++] = r - 12;
+    // keep the valid range, drop duplicates, sort
+    int m = 0;
+    for (int i = 0; i < count; ++i) {
+        if (out[i] < 21 || out[i] > 108) continue;
+        bool dup = false; for (int j = 0; j < m; ++j) dup |= out[j] == out[i];
+        if (!dup) out[m++] = out[i];
+    }
+    std::sort(out, out + m);
+    return m;
+}
+
+// Pianist voicing: right hand = up to 3 chord tones just below the melody (3rd/7th first, then 5th, 9th, root);
+// left hand = root in the bass plus fifth or octave.
+int geniusVoicing(const int* tones, int numTones, int root, int melody, int* out) {
+    auto rank = [root](int t) { int r = mod12(t - root);
+        return (r == 3 || r == 4 || r == 10 || r == 11) ? 0 : (r == 7 || r == 6 || r == 8) ? 1 : (r == 2 || r == 9 || r == 5) ? 2 : 3; };
+    int ordered[6]; int no = 0;
+    for (int i = 0; i < numTones && no < 6; ++i) if (tones[i] != mod12(melody)) ordered[no++] = tones[i];
+    std::stable_sort(ordered, ordered + no, [&](int a, int b) { return rank(a) < rank(b); });
+    no = std::min(no, 3);
+    int rh[3]; int nr = 0;
+    for (int i = 0; i < no; ++i) { int n = melody - 1; while (mod12(n) != ordered[i]) --n; if (n >= melody - 11) rh[nr++] = n; }
+    int low = melody; for (int i = 0; i < nr; ++i) low = std::min(low, rh[i]);
+    int r = std::min(low - 3, 52); while (mod12(r) != root) --r;
+    if (r < 28) r += 12;
+    int count = 0;
+    auto add = [&](int n) { if (n < 24 || n >= melody) return; for (int j = 0; j < count; ++j) if (out[j] == n) return; out[count++] = n; };
+    add(r);
+    if (r + 7 < low - 2) add(r + 7); else if (r + 12 < low - 2) add(r + 12);
+    for (int i = 0; i < nr; ++i) add(rh[i]);
+    std::sort(out, out + count);
     return count;
 }
 
@@ -618,6 +688,149 @@ std::vector<PatternEvent> melodyEvents(const Genre& g, int gi, const Key& pk, co
     return ev;
 }
 } // namespace
+
+const char* const kInspireNames[10] = { "Contrappunto", "Contrappunto II", "Armonia in terza", "Armonia in sesta", "Risposta",
+    "Eco del motivo", "Hook", "Hook II", "Note guida", "Arpeggio melodico" };
+
+InspireResult inspire(const Genre& g, const std::vector<RecordedNote>& rec, int total, std::optional<Key> fixedKey, int seed) {
+    InspireResult res;
+    total = std::max(16, total);
+    const int bars = (total + 15) / 16;
+    std::array<double, 12> hist {};
+    for (auto& n : rec) hist[(size_t) mod12(n.note)] += std::max(1, n.len);
+    Key key = fixedKey ? *fixedKey : detectKey(hist, g.prefersMinor ? .04 : -.02).value_or(g.defaultKey());
+    const std::string st = scaleFor(g, key);
+    auto scale = scaleSet(key, st);
+    Key pk = progressionKey(g, key);
+    auto pool = diatonic(key, st, 1);
+    for (auto& p : g.progressions) for (auto& rc : p.chords) {
+        Chord c = romanChord(rc, pk);
+        if (std::none_of(pool.begin(), pool.end(), [&](const Chord& x) { return x.root == c.root && x.quality == c.quality; })) pool.push_back(c);
+    }
+    Chord prev = makeChord(key.tonic, qualityIndex(key.minor ? "minor" : "major"));
+    for (int b = 0; b < bars; ++b) {
+        std::array<double, 12> w {}; int low = 999; bool any = false;
+        for (auto& n : rec) {
+            int ov = std::min(n.step + n.len, (b + 1) * 16) - std::max(n.step, b * 16);
+            if (ov > 0) { w[(size_t) mod12(n.note)] += ov; low = std::min(low, n.note); any = true; }
+        }
+        if (!any) { res.chords.push_back(prev); continue; }
+        Chord best = prev; double bs = -1e9;
+        for (auto& c : pool) {
+            auto cp = c.pcs(); double sc = 0;
+            for (int pc = 0; pc < 12; ++pc) sc += cp.count(pc) ? w[(size_t) pc] : -0.5 * w[(size_t) pc];
+            if (low < 999 && mod12(low) == c.root) sc += 2;
+            if (sc > bs) { bs = sc; best = c; }
+        }
+        res.chords.push_back(best); prev = best;
+    }
+    res.key = key;
+    std::vector<const RecordedNote*> top((size_t) total, nullptr);
+    std::vector<bool> onsets((size_t) total, false);
+    for (auto& n : rec) if (n.step >= 0 && n.step < total) {
+        onsets[(size_t) n.step] = true;
+        if (!top[(size_t) n.step] || n.note > top[(size_t) n.step]->note) top[(size_t) n.step] = &n;
+    }
+    std::vector<int> tops; for (auto* t : top) if (t) tops.push_back(t->note);
+    std::sort(tops.begin(), tops.end());
+    const int median = tops.empty() ? g.octave + 7 : tops[tops.size() / 2];
+    const int center = median < 60 ? median + 12 : median + 3, lo = center - 9, hi = center + 12;
+    std::vector<int> notes; for (int n = lo; n <= hi; ++n) if (scale.count(mod12(n))) notes.push_back(n);
+    auto nearIn = [&](int n, const std::set<int>& set) { int b = n, d = 99; for (int m : notes) if (set.count(mod12(m)) && std::abs(m - n) < d) { d = std::abs(m - n); b = m; } return b; };
+    auto stepScale = [&](int n, int k) {
+        int x = nearIn(n, scale); auto it = std::find(notes.begin(), notes.end(), x);
+        int i = it == notes.end() ? 0 : (int) (it - notes.begin());
+        i = std::max(0, std::min((int) notes.size() - 1, i + k)); return notes[(size_t) i];
+    };
+    auto chordAt = [&](int s) { return res.chords[(size_t) std::min((int) res.chords.size() - 1, s / 16)]; };
+    struct Src { int s, note, len; }; std::vector<Src> srcLine;
+    for (int s = 0; s < total; ++s) if (top[(size_t) s]) srcLine.push_back({ s, top[(size_t) s]->note, top[(size_t) s]->len });
+    int gi = 0; for (size_t i = 0; i < genres().size(); ++i) if (&genres()[i] == &g) gi = (int) i;
+    const auto& stl = melodyStyle(g.id); auto rpool = rhythmPool(stl); const int P = (int) rpool.size();
+
+    for (int opt = 0; opt < 10; ++opt) {
+        Rng R(((uint32_t) (gi + 1) * 7919u + (uint32_t) (42 + opt) * 31337u + (uint32_t) (opt + 1) * 104729u + (uint32_t) seed * 15485863u)
+              ^ (uint32_t) (rec.size() * 2654435761u));
+        struct M { int step, note, len, vel; }; std::vector<M> mel;
+        auto push = [&](int step, int note, int len, int vel) {
+            if (step < total && step >= 0 && note >= 21 && note <= 108) mel.push_back({ step, note, std::max(1, std::min(len, total - step)), vel }); };
+        if (opt <= 1) {
+            const std::string& rh = rpool[(size_t) ((R(P) + opt * 5) % P)];
+            int n = nearIn(center, chordAt(0).pcs()), lastSrc = -1;
+            for (int s = 0; s < total; ++s) {
+                if (rh[(size_t) (s % 16)] != 'x') continue;
+                if (onsets[(size_t) s] && s % 4 != 0 && R(3) != 0) continue;
+                int e = s + 1; while (e < total && rh[(size_t) (e % 16)] == '-') ++e;
+                auto* src = top[(size_t) s];
+                if (src && lastSrc >= 0) n = stepScale(n, src->note > lastSrc ? -1 - R(2) : src->note < lastSrc ? 1 + R(2) : (R(2) ? 1 : -1));
+                else n = stepScale(n, R(3) - 1);
+                if (src) lastSrc = src->note;
+                if (s % 8 == 0) n = nearIn(n, chordAt(s).pcs());
+                if (src) { int iv = std::abs(n - src->note) % 12; if (iv == 1 || iv == 2) n = nearIn(n + 3, chordAt(s).pcs()); }
+                push(s, n, e - s, s % 4 == 0 ? 96 : 82);
+            }
+        } else if (opt <= 3) {
+            int k = opt == 2 ? 2 : 5;
+            for (auto& x : srcLine) {
+                int n = x.note; for (int i = 0; i < k; ++i) { ++n; while (!scale.count(mod12(n))) ++n; }
+                while (n > hi + 5) n -= 12; while (n < lo) n += 12;
+                push(x.s, n, x.len, 84);
+            }
+        } else if (opt == 4) {
+            for (int w = 0; w < total; w += 8) {
+                bool busy = false; for (int s = w; s < std::min(total, w + 8); ++s) busy |= onsets[(size_t) s];
+                if (busy && !(w % 16 == 8 && R(2) == 0)) continue;
+                bool any = false;
+                for (auto& x : srcLine) if (x.s >= w - 8 && x.s < w) {
+                    any = true; int off = x.s - (w - 8);
+                    push(w + off, nearIn(stepScale(x.note, 2) + (x.note < lo ? 12 : 0), chordAt(w + off).pcs()), std::min(x.len, 8 - off), 86);
+                }
+                if (!any) { int n = nearIn(center, chordAt(w).pcs()); for (int o : { 0, 2, 4, 6 }) { push(w + o, n, 2, 84); n = stepScale(n, R(3) - 1); } }
+            }
+        } else if (opt == 5) {
+            for (auto& x : srcLine) {
+                int n = x.note + 12; while (n > hi + 5) n -= 12; while (n < lo) n += 12;
+                push(x.s + 2, nearIn(n, scale), std::max(1, x.len - 1), 72);
+            }
+        } else if (opt <= 7) {
+            auto ev = melodyEvents(g, gi, key, res.chords, -1, (opt * 7 + R(30)) % kMelodyCount, seed + opt, 16);
+            for (auto& e : ev) if (e.vel > 0) {
+                int len = 2;
+                for (auto& o : ev) if (o.vel == 0 && o.note == e.note && (o.step > e.step || o.step == 0)) { len = (o.step == 0 ? total : o.step) - e.step; break; }
+                push(e.step, e.note, len, e.vel);
+            }
+        } else if (opt == 8) {
+            int n = center;
+            for (int s = 0; s < total; s += 8) {
+                const Chord& c = chordAt(s); const auto& iv = qualities()[(size_t) c.quality].iv;
+                std::set<int> guide { mod12(c.root + iv[1]), mod12(c.root + (iv.size() > 3 ? iv[3] : iv[2])) };
+                n = nearIn(n, guide); push(s, n, 8, 80);
+            }
+        } else {
+            for (int s = 0; s < total; s += 2) {
+                auto cp = chordAt(s).pcs();
+                std::vector<int> tones; for (int m : notes) if (cp.count(mod12(m)) && m >= center - 3 && m <= center + 10) tones.push_back(m);
+                if (tones.empty()) continue;
+                int L = (int) tones.size(), period = std::max(1, L * 2 - 1), i = (s / 2) % period;
+                int idx = i < L ? i : L * 2 - 2 - i;
+                push(s, tones[(size_t) std::max(0, idx)], 2, s % 4 == 0 ? 88 : 74);
+            }
+        }
+        std::stable_sort(mel.begin(), mel.end(), [](const M& a, const M& b) { return a.step < b.step; });
+        InspireOption o; o.name = kInspireNames[opt];
+        for (size_t i = 0; i < mel.size(); ++i) {
+            int end = mel[i].step + mel[i].len;
+            if (i + 1 < mel.size() && mel[i + 1].step < end) end = mel[i + 1].step;
+            if (end <= mel[i].step) continue;
+            o.events.push_back({ mel[i].step, mel[i].note, mel[i].vel, 1 });
+            o.events.push_back({ end >= total ? 0 : end, mel[i].note, 0, 1 });
+        }
+        std::stable_sort(o.events.begin(), o.events.end(), [](const PatternEvent& a, const PatternEvent& b) {
+            if (a.step != b.step) return a.step < b.step; return (a.vel == 0) && (b.vel != 0); });
+        res.options.push_back(std::move(o));
+    }
+    return res;
+}
 
 Pattern buildPattern(const Genre& g, const Key& k, int progIndex, int complexity, int arp, int melody, int seed) {
     Key pk = progressionKey(g, k);

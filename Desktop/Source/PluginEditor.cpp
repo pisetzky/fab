@@ -159,6 +159,198 @@ void SuggestionCard::paint(juce::Graphics& g) {
     g.drawFittedText(juce::String::fromUTF8(s.reason.c_str()), in.toNearestInt(), juce::Justification::topLeft, 2);
 }
 
+// ---------------------------------------------------------------- Pro panel
+ProPanel::ProPanel(ChordPilotProcessor& p) {
+    auto setup = [this](juce::Slider& s, juce::Label& l, const char* text, const char* suffix) {
+        s.setSliderStyle(juce::Slider::LinearHorizontal);
+        s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 64, 22);
+        s.setTextValueSuffix(suffix);
+        l.setText(text, juce::dontSendNotification);
+        l.setColour(juce::Label::textColourId, fg);
+        addAndMakeVisible(s); addAndMakeVisible(l);
+    };
+    setup(strum, strumL, "Strum accordi", " ms");
+    setup(humanize, humanizeL, "Humanize", " %");
+    setup(swing, swingL, "Swing Genre Player", " %");
+    setup(transpose, transposeL, "Trasponi tastiera", "");
+    for (auto* v : cp::kVoicingStyles) voicing.addItem(juce::String("Voicing: ") + v, voicing.getNumItems() + 1);
+    addAndMakeVisible(oneFinger); addAndMakeVisible(scaleLock); addAndMakeVisible(voicing);
+    auto& s = p.params;
+    a1 = std::make_unique<BA>(s, "onefinger", oneFinger);
+    a2 = std::make_unique<BA>(s, "scalelock", scaleLock);
+    s1 = std::make_unique<SA>(s, "strum", strum);
+    s2 = std::make_unique<SA>(s, "humanize", humanize);
+    s3 = std::make_unique<SA>(s, "swing", swing);
+    s4 = std::make_unique<SA>(s, "transpose", transpose);
+    c1 = std::make_unique<CA>(s, "voicing", voicing);
+    setSize(440, 300);
+}
+
+void ProPanel::paint(juce::Graphics& g) {
+    g.fillAll(juce::Colour(0xff0d1a3a));
+    g.setColour(fg); g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
+    g.drawText("Opzioni Pro", 16, 8, 300, 24, juce::Justification::left);
+    g.setColour(muted); g.setFont(juce::FontOptions(11.0f));
+    g.drawText("Ispirate a Scaler, Captain Chords, InstaChord/Cthulhu. Spente di default.", 16, 30, 420, 16, juce::Justification::left);
+}
+
+void ProPanel::resized() {
+    auto r = getLocalBounds().reduced(16).withTrimmedTop(40);
+    oneFinger.setBounds(r.removeFromTop(26)); scaleLock.setBounds(r.removeFromTop(26)); r.removeFromTop(6);
+    for (auto [s, l] : { std::pair<juce::Slider*, juce::Label*> { &strum, &strumL }, { &humanize, &humanizeL }, { &swing, &swingL }, { &transpose, &transposeL } }) {
+        auto row = r.removeFromTop(30); l->setBounds(row.removeFromLeft(150)); s->setBounds(row);
+    }
+    r.removeFromTop(6);
+    voicing.setBounds(r.removeFromTop(30));
+}
+
+// ---------------------------------------------------------------- MIDI export
+juce::File MidiDragButton::writeMidi() const {
+    juce::MidiFile file; file.setTicksPerQuarterNote(480);
+    auto pat = source ? source() : proc.currentPattern();
+    const double bpm = proc.params.getRawParameterValue("bpm")->load();
+    juce::MidiMessageSequence acc, mel;
+    acc.addEvent(juce::MidiMessage::tempoMetaEvent((int) (60000000.0 / bpm)));
+    if (pat) for (int loop = 0; loop < 4; ++loop) for (auto& e : pat->events) {
+        int step = e.step + loop * pat->total;
+        if (e.vel == 0 && e.step == 0) step = (loop + 1) * pat->total;
+        const double tick = step * 120.0;
+        const int ch = e.lane == 1 ? 2 : 1;
+        auto m = e.vel > 0 ? juce::MidiMessage::noteOn(ch, e.note, (juce::uint8) e.vel) : juce::MidiMessage::noteOff(ch, e.note);
+        m.setTimeStamp(tick);
+        (e.lane == 1 ? mel : acc).addEvent(m);
+    }
+    acc.sort(); mel.sort();
+    file.addTrack(acc); file.addTrack(mel);
+    const auto& g = cp::genres()[(size_t) juce::jlimit(0, (int) cp::genres().size() - 1, proc.genreIndex())];
+    auto f = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile(fileName.isNotEmpty() ? fileName : "ChordPilot-" + juce::String(g.id) + ".mid");
+    f.deleteFile();
+    juce::FileOutputStream os(f);
+    if (os.openedOk()) file.writeTo(os);
+    return f;
+}
+
+void MidiDragButton::mouseDrag(const juce::MouseEvent& e) {
+    if (dragging || e.getDistanceFromDragStart() < 8) return;
+    dragging = true;
+    auto f = writeMidi();
+    juce::DragAndDropContainer::performExternalDragDropOfFiles({ f.getFullPathName() }, false, this, [this] { dragging = false; });
+}
+
+void MidiDragButton::clicked() {
+    if (dragging) return;
+    auto f = writeMidi();
+    chooser = std::make_unique<juce::FileChooser>("Salva MIDI", juce::File::getSpecialLocation(juce::File::userMusicDirectory).getChildFile(f.getFileName()), "*.mid");
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+                         [f](const juce::FileChooser& fc) { auto dest = fc.getResult(); if (dest != juce::File()) f.copyFileTo(dest); });
+}
+
+// ---------------------------------------------------------------- Inspiration
+InspirePanel::InspirePanel(ChordPilotProcessor& p) : proc(p) {
+    for (auto* b : { &rec4, &rec8, &fromPlayer }) addAndMakeVisible(b);
+    rec4.getProperties().set("primary", true);
+    status.setColour(juce::Label::textColourId, muted);
+    status.setText("Fai partire la traccia nella DAW (o suona): la registrazione parte dalla prossima battuta.", juce::dontSendNotification);
+    addAndMakeVisible(status);
+    auto arm = [this](int bars) {
+        recorded.clear(); openNotes.clear(); total = bars * 16;
+        proc.inspireFifo.reset(); proc.armInspiration(bars);
+        status.setText("In attesa della traccia... (" + juce::String(bars) + " battute)", juce::dontSendNotification);
+    };
+    rec4.onClick = [arm] { arm(4); };
+    rec8.onClick = [arm] { arm(8); };
+    fromPlayer.onClick = [this] {
+        recorded.clear();
+        if (auto pat = proc.currentPattern()) {
+            total = pat->total; std::map<int, cp::PatternEvent> open;
+            for (auto& e : pat->events) { int k = e.lane * 1000 + e.note;
+                if (e.vel > 0) open[k] = e;
+                else if (open.count(k)) { auto o = open[k]; open.erase(k); recorded.push_back({ o.step, o.note, o.vel, std::max(1, (e.step == 0 ? total : e.step) - o.step) }); } }
+        }
+        analyse();
+    };
+    setSize(560, 470);
+    startTimerHz(10);
+}
+
+void InspirePanel::timerCallback() {
+    int s1, n1, s2, n2; int ready = proc.inspireFifo.getNumReady();
+    proc.inspireFifo.prepareToRead(ready, s1, n1, s2, n2);
+    auto consume = [this](juce::int64 v) {
+        bool on = (v >> 40) & 1; int note = (int) ((v >> 32) & 0x7f), vel = (int) ((v >> 24) & 0x7f), step = (int) (v & 0xffffff);
+        if (on) openNotes[note] = { step, vel };
+        else if (openNotes.count(note)) { auto [s, ve] = openNotes[note]; openNotes.erase(note); recorded.push_back({ s, note, ve, std::max(1, step - s) }); }
+    };
+    for (int i = 0; i < n1; ++i) consume(proc.inspireFifoData[(size_t) (s1 + i)]);
+    for (int i = 0; i < n2; ++i) consume(proc.inspireFifoData[(size_t) (s2 + i)]);
+    proc.inspireFifo.finishedRead(n1 + n2);
+    int st = proc.inspireState.load();
+    if (st == 2) status.setText("Registrazione in corso... " + juce::String((int) recorded.size()) + " note", juce::dontSendNotification);
+    if (st == 3) {
+        proc.inspireState = 0;
+        for (auto& [note, sv] : openNotes) recorded.push_back({ sv.first, note, sv.second, std::max(1, total - sv.first) });
+        openNotes.clear();
+        if (recorded.empty()) status.setText("Nessuna nota ricevuta: manda il MIDI della traccia a ChordPilot e riprova.", juce::dontSendNotification);
+        else analyse();
+    }
+}
+
+void InspirePanel::analyse() {
+    const auto& g = cp::genres()[(size_t) juce::jlimit(0, (int) cp::genres().size() - 1, proc.genreIndex())];
+    auto r = cp::inspire(g, recorded, total);
+    juce::String chords; for (auto& c : r.chords) chords << (chords.isEmpty() ? "" : " - ") << juce::String(c.name(cp::prefersFlats(r.key)));
+    status.setText(juce::String("Traccia in ") + cp::kSharps[r.key.tonic] + (r.key.minor ? " minore" : " maggiore") + ", accordi " + chords,
+                   juce::dontSendNotification);
+    listenButtons.clear(); dragButtons.clear(); optionPatterns.clear(); names.clear();
+    for (size_t i = 0; i < r.options.size(); ++i) {
+        auto pat = std::make_shared<cp::Pattern>();
+        pat->total = total; pat->stepsPerChord = 16; pat->chords = r.chords;
+        for (auto& n : recorded) {
+            int end = n.step + n.len;
+            pat->events.push_back({ n.step, n.note, n.vel, 0 });
+            pat->events.push_back({ end >= total ? 0 : end, n.note, 0, 0 });
+        }
+        pat->events.insert(pat->events.end(), r.options[i].events.begin(), r.options[i].events.end());
+        std::stable_sort(pat->events.begin(), pat->events.end(), [](const cp::PatternEvent& a, const cp::PatternEvent& b) {
+            if (a.step != b.step) return a.step < b.step; return (a.vel == 0) && (b.vel != 0); });
+        std::shared_ptr<const cp::Pattern> cpat = pat;
+        optionPatterns.push_back(cpat);
+        names.add(juce::String((int) i + 1) + ". " + r.options[i].name);
+        auto* listen = listenButtons.add(new juce::TextButton("Ascolta"));
+        listen->onClick = [this, cpat] { proc.playCustom(cpat); };
+        auto* drag = dragButtons.add(new MidiDragButton(proc));
+        drag->setButtonText("Trascina MIDI");
+        drag->source = [cpat] { return cpat; };
+        drag->fileName = "ChordPilot-ispirazione-" + juce::String((int) i + 1) + ".mid";
+        addAndMakeVisible(listen); addAndMakeVisible(drag);
+    }
+    resized(); repaint();
+}
+
+void InspirePanel::paint(juce::Graphics& g) {
+    g.fillAll(juce::Colour(0xff0d1a3a));
+    g.setColour(fg); g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
+    g.drawText("Ispirazione", 16, 8, 300, 24, juce::Justification::left);
+    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+    for (int i = 0; i < names.size(); ++i) {
+        g.setColour(fg);
+        g.drawText(names[i], 16, 130 + i * 32, 230, 28, juce::Justification::centredLeft);
+    }
+}
+
+void InspirePanel::resized() {
+    auto r = getLocalBounds().reduced(16).withTrimmedTop(32);
+    auto row = r.removeFromTop(30);
+    rec4.setBounds(row.removeFromLeft(160)); row.removeFromLeft(8);
+    rec8.setBounds(row.removeFromLeft(160)); row.removeFromLeft(8);
+    fromPlayer.setBounds(row);
+    status.setBounds(r.removeFromTop(48));
+    for (int i = 0; i < listenButtons.size(); ++i) {
+        listenButtons[i]->setBounds(250, 130 + i * 32, 100, 28);
+        dragButtons[i]->setBounds(360, 130 + i * 32, 180, 28);
+    }
+}
+
 // ---------------------------------------------------------------- Editor
 ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEditor(p), proc(p), keyboard(p) {
     setLookAndFeel(&lnf);
@@ -176,6 +368,12 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
     melodyBox.getProperties().set("accent", (juce::int64) pink.getARGB());
     newSongButton.getProperties().set("song", true);
     newSongButton.onClick = [this] { proc.newSong(); };
+    proButton.onClick = [this] {
+        juce::CallOutBox::launchAsynchronously(std::make_unique<ProPanel>(proc), proButton.getScreenBounds(), nullptr);
+    };
+    inspireButton.onClick = [this] {
+        juce::CallOutBox::launchAsynchronously(std::make_unique<InspirePanel>(proc), inspireButton.getScreenBounds(), nullptr);
+    };
     geniusButton.setClickingTogglesState(true);
     geniusButton.getProperties().set("genius", true);
     genreBox.getProperties().set("accent", (juce::int64) green.getARGB());
@@ -189,7 +387,7 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &genreBox, &pianoBox, &keyBox, &complexityBox, &progressionBox,
             &minorToggle, &synthToggle, &syncToggle, &italianToggle, &playButton, &bpmSlider, &octDown, &octUp, &keyboard,
-            &arpBox, &melodyBox, &newSongButton, &geniusButton })
+            &arpBox, &melodyBox, &newSongButton, &geniusButton, &proButton, &midiButton, &inspireButton })
         addAndMakeVisible(c);
     for (auto& c : cards) {
         addAndMakeVisible(c);
@@ -381,10 +579,13 @@ void ChordPilotEditor::resized() {
     italianToggle.setBounds(second.removeFromLeft(100));
     r.removeFromTop(8);
     auto third = r.removeFromTop(30);
-    arpBox.setBounds(third.removeFromLeft(240)); third.removeFromLeft(8);
-    melodyBox.setBounds(third.removeFromLeft(260)); third.removeFromLeft(8);
-    newSongButton.setBounds(third.removeFromLeft(160)); third.removeFromLeft(8);
-    geniusButton.setBounds(third.removeFromLeft(170));
+    arpBox.setBounds(third.removeFromLeft(200)); third.removeFromLeft(8);
+    melodyBox.setBounds(third.removeFromLeft(220)); third.removeFromLeft(8);
+    newSongButton.setBounds(third.removeFromLeft(130)); third.removeFromLeft(8);
+    geniusButton.setBounds(third.removeFromLeft(130)); third.removeFromLeft(8);
+    proButton.setBounds(third.removeFromLeft(56)); third.removeFromLeft(8);
+    midiButton.setBounds(third.removeFromLeft(160)); third.removeFromLeft(8);
+    inspireButton.setBounds(third.removeFromLeft(110));
     r.removeFromTop(8);
     statusArea = r.removeFromTop(48);
     r.removeFromTop(6);
