@@ -84,7 +84,8 @@ private:
     // Pro options: delayed-event queue (strum, humanize, swing), one-finger chords, scale lock
     struct Delayed { long long due; juce::uint8 st; juce::uint8 note; juce::uint8 vel; bool pattern; bool active; };
     std::array<Delayed, 1024> delayed {};
-    struct OneFingerEntry { int root = 0; int tones[6] {}; int numTones = 0; int lockShift = 0; };
+    struct OneFingerEntry { int root = 0; int quality = 0; int tones[6] {}; int numTones = 0; int lockShift = 0;
+                            int leftRoot = 0; int leftQuality = 0; };   // left-hand chord in Genius two-hands mode
     using OneFingerTable = std::array<OneFingerEntry, 12>;
     std::shared_ptr<const OneFingerTable> oneFinger;        // swapped atomically
     std::array<std::array<int, 10>, 128> oneFingerHeld {};  // pressed key → chord notes (count in [0])
@@ -98,6 +99,15 @@ private:
     std::array<int, 128> pressedToSounding {};
     int geniusNotes[8] {}; int geniusCount = 0; int geniusTones[6] {}; int geniusNumTones = 0;
     long long geniusChangedAt = -1000000, lastNoteAt = 0, sampleClock = 0;
+    int geniusPrevBass = -1;
+    // Two hands
+    int handRoot = -1, handQuality = 0, handTones[6] {}, handNumTones = 0; long long handChordAt = -1000000;
+    bool handleTwoHands(const juce::MidiMessage& m, int raw, int pressed, int offset, juce::MidiBuffer& out);
+public:
+    /// Pianist mode: suggested next melody notes (message thread only).
+    std::vector<cp::Engine::GeniusNext> geniusSuggestions() { return geniusEngine.geniusNext(); }
+    std::atomic<int> geniusVersion { 0 };          // bumps when the suggestions should be refreshed
+private:
     bool geniusChordOn = false;
     double inspireStartPpq = -1; long long inspireStartSample = -1;
     void recordForInspiration(const juce::MidiMessage& m, int offset, bool hostMoving, double blockPpq, double samplesPerBeat);

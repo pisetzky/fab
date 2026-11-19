@@ -77,5 +77,15 @@ int main() {
           for (auto& [k2, v] : bal) assert(v == 0);
           assert(ons > 0); sigs.insert(sig); }
       assert(sigs.size() == 10); }
+    // Two hands: each hand within an octave, left below the split, right above it
+    { Engine e; e.fixedKey = Key{0,false};
+      for (int n : { 48, 55, 53, 57, 50, 52, 59, 47 }) {
+          Chord c = e.geniusLeft(n); e.commit(c);
+          int lh[4]; int nl = leftHandVoicing(c.root, c.quality, n, 60, lh);
+          assert(nl >= 2 && lh[nl - 1] - lh[0] <= 12); for (int i = 0; i < nl; ++i) assert(lh[i] < 60);
+          std::vector<int> tones; for (int t : c.pcs()) tones.push_back(t);
+          int rh[4]; int nr = rightHandVoicing(tones.data(), (int) tones.size(), c.root, 64, 60, rh);
+          assert(rh[nr - 1] - rh[0] <= 12); for (int i = 0; i < nr; ++i) assert(rh[i] >= 60);
+      } }
     std::cout << "ALL OK\n";
 }

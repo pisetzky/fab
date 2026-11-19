@@ -29,6 +29,18 @@ public final class ChordPilotController: ObservableObject {
     @Published public private(set) var song = 0
     @Published public private(set) var genius = false
     @Published public private(set) var melodyNotes: Set<Int> = []
+    /// Pianist mode: gold keys = suggested next notes → chord name.
+    @Published public private(set) var geniusNext: [Int: String] = [:]
+    @Published public private(set) var twoHands = false
+    @Published public private(set) var notesOnly = false
+    /// Easy mode: only the essentials on screen, Genius mode always on. On at first launch.
+    @Published public var easyMode: Bool = UserDefaults.standard.object(forKey: "cp.easy") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(easyMode, forKey: "cp.easy")
+            if easyMode && !genius { setGenius(true) }
+        }
+    }
+    private var lastGeniusVersion = -1
     @Published public var italianNames = Locale.current.language.languageCode?.identifier == "it"
     @Published public var lowestNote = 48        // C3
     @Published public var octaves = 3
@@ -83,6 +95,8 @@ public final class ChordPilotController: ObservableObject {
         hostSync = au.parameterValue(.hostSync) > 0.5
         progressionIndex = au.progressionIndex
         arpeggio = au.arpeggio; melody = au.melody; song = au.song; genius = au.genius
+        twoHands = au.parameterValue(.hands) > 0.5; notesOnly = au.parameterValue(.notesOnly) > 0.5
+        if easyMode && !genius { au.set(.genius, 1) }
         piano = PianoModel.all[max(0, min(PianoModel.all.count - 1, Int(au.parameterValue(.piano).rounded())))]
         patternChords = au.currentPattern?.chords ?? []
         engine.genre = genre
@@ -114,6 +128,12 @@ public final class ChordPilotController: ObservableObject {
         if idx != patternChordIndex { patternChordIndex = idx }
 
         checkInspirationEnd()
+        if genius, au.geniusVersion != lastGeniusVersion {
+            lastGeniusVersion = au.geniusVersion
+            var g: [Int: String] = [:]
+            for s in au.geniusSuggestions() { g[s.note] = chordName(s.chord) }
+            if g != geniusNext { geniusNext = g }
+        } else if !genius && !geniusNext.isEmpty { geniusNext = [:] }
         if h != held {
             recordInspiration(added: h.subtracting(held), removed: held.subtracting(h))
             held = h
@@ -193,6 +213,8 @@ public final class ChordPilotController: ObservableObject {
     public func setMelody(_ i: Int) { audioUnit?.set(.melody, AUValue(i + 1)) }
     public func setGenius(_ on: Bool) { audioUnit?.set(.genius, on ? 1 : 0) }
     public func newSong() { audioUnit?.newSong() }
+    public func setTwoHands(_ on: Bool) { audioUnit?.set(.hands, on ? 1 : 0) }
+    public func setNotesOnly(_ on: Bool) { audioUnit?.set(.notesOnly, on ? 1 : 0) }
 
     // MARK: Inspiration
 

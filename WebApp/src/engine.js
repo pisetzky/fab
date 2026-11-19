@@ -363,6 +363,63 @@ const CP = (() => {
       if (RICH_GENRES.has(this.genre.id) && this.complexity >= 1) ch = adjust(ch, 2);   // 7ths / 9ths
       return { note: m, chord: ch, shift: m - note };
     }
+    /// Two hands – left hand: the progression chord built on the pressed note (else one containing it).
+    geniusLeft(note) {
+      const k = this.currentKey, scale = scaleSet(k, scaleFor(this.genre, k));
+      let m = note; for (const d of [0, -1, 1, -2, 2]) if (scale.has(mod12(note + d))) { m = note + d; break; }
+      const pc = mod12(m), ctx = this.suggest([]), last = this.history[this.history.length - 1];
+      const fresh = s => !(last && loose(s.chord, last));
+      const pick = ctx.chords.find(s => fresh(s) && s.chord.root === pc) || ctx.chords.find(s => fresh(s) && pcs(s.chord).has(pc));
+      let ch = pick ? pick.chord : (diatonic(k, scaleFor(this.genre, k), 1).find(c => c.root === pc) || chord(pc, k.minor ? "minor" : "major"));
+      if (RICH_GENRES.has(this.genre.id) && this.complexity >= 1) ch = adjust(ch, 2);
+      return { note: m, chord: ch };
+    }
+    /// Two hands – right hand: the closest scale note, preferring the tones of the left-hand chord.
+    melodyOver(note, c, floor = 0) {
+      const k = this.currentKey, scale = scaleSet(k, scaleFor(this.genre, k)), cp = pcs(c);
+      for (const d of [0, -1, 1, -2, 2]) if (note + d >= floor && cp.has(mod12(note + d))) return note + d;
+      for (const d of [0, -1, 1, -2, 2]) if (note + d >= floor && scale.has(mod12(note + d))) return note + d;
+      return note;
+    }
+
+    /// Pianist mode memory: the melody notes played in Genius mode.
+    geniusPlayed(note) { (this.geniusMelody = this.geniusMelody || []).push(note); if (this.geniusMelody.length > 8) this.geniusMelody.shift(); }
+
+    /// Suggests the next 1-3 melody notes in Genius mode, each with the chord it will produce.
+    /// Hit-melody rules: short steps, a leap is answered by a step back, sequences (repeating the last
+    /// interval) and phrase endings that resolve home, all inside the genre's progression.
+    geniusNext() {
+      const k = this.currentKey, scale = scaleSet(k, scaleFor(this.genre, k));
+      const mel = this.geniusMelody || [];
+      const prev = mel.length ? mel[mel.length - 1] : this.genre.octave + 7;
+      const ctx = this.suggest([]);
+      const last = this.history[this.history.length - 1];
+      const out = [];
+      for (let n = prev - 7; n <= prev + 7; n++) {
+        if (n === prev || !scale.has(mod12(n))) continue;
+        const pc = mod12(n);
+        const idx = ctx.chords.findIndex(s => pcs(s.chord).has(pc) && !(last && loose(s.chord, last)));
+        if (idx < 0) continue;
+        const c = ctx.chords[idx].chord, d = Math.abs(n - prev), up = n > prev;
+        let score = 10 - 1.5 * idx;
+        score += d <= 2 ? 3 : d <= 4 ? 2 : d === 5 ? 1 : d === 7 ? 0.5 : -1;
+        const rel = mod12(pc - c.root);
+        if (rel === 0) score += 1; else if (rel === 3 || rel === 4) score += 1.5;
+        if (mel.length >= 2) {
+          const lastIv = prev - mel[mel.length - 2];
+          if (Math.abs(lastIv) > 4 && Math.sign(n - prev) === -Math.sign(lastIv) && d <= 2) score += 2;   // leap → step back
+          if (mel.length >= 3 && n - prev === mel[mel.length - 2] - mel[mel.length - 3]) score += 2;     // sequence
+        }
+        if (mel.length % 4 === 3 && pc === k.tonic) score += 2.5;                                         // phrase ending
+        if (up && mel.length % 4 === 1) score += 0.5;                                                      // phrases rise first
+        out.push({ note: n, chord: RICH_GENRES.has(this.genre.id) && this.complexity >= 1 ? adjust(c, 2) : c, score });
+      }
+      out.sort((a, b) => b.score - a.score);
+      const seen = new Set(), best = [];
+      for (const o of out) { const key = o.chord.root + ":" + o.chord.quality; if (seen.has(key)) continue; seen.add(key); best.push(o); if (best.length === 3) break; }
+      return best;
+    }
+
     /// Table for the 12 pitch classes (used by the real-time engines, recomputed as the song moves on).
     geniusTable() { return [...Array(12)].map((_, pc) => this.genius(60 + pc)); }
 
@@ -819,11 +876,32 @@ const CP = (() => {
     return { analysis: A, options: out };
   }
 
+  // ---------- Two hands, like a real pianist: each hand stays within an octave, no extra notes ----------
+  /// Left hand: the bass is the lowest note of the hand itself (root at the pressed key's position),
+  /// plus 3rd and 7th (shell voicing) or 3rd and 5th – all within one hand span (≤ 12 semitones).
+  function leftHandVoicing(c, pressed, split) {
+    const iv = Q[c.quality].iv.map(i => i % 12);
+    let r = pressed + 2; while (mod12(r) !== c.root) r--;
+    while (r + 11 >= split && r - 12 >= 28) r -= 12;
+    const third = iv[1], seventh = iv.length > 3 ? iv[3] : null;
+    const upper = seventh !== null && seventh > third ? [third, seventh] : [third, iv[2]];
+    return [r].concat(upper.map(i => r + i)).filter(n => n < split && n >= 24);
+  }
+  /// Right hand: the melody on top with up to two chord tones under it (3rd/7th first), within an octave.
+  function rightHandVoicing(c, melody, split = 0) {
+    const tones = [...new Set(Q[c.quality].iv.map(i => mod12(c.root + i)))].filter(t => t !== mod12(melody));
+    const rank = t => { const r = mod12(t - c.root); return [3, 4, 10, 11].includes(r) ? 0 : [6, 7, 8].includes(r) ? 1 : r === 0 ? 3 : 2; };
+    tones.sort((a, b) => rank(a) - rank(b));
+    const out = [melody];
+    for (const pc of tones.slice(0, 2)) { let n = melody - 1; while (mod12(n) !== pc) n--; if (n >= melody - 11 && n >= split) out.push(n); }
+    return out.sort((a, b) => a - b);
+  }
+
   const RICH_GENRES = new Set(["jazz", "rnb", "gospel", "lofi", "latin", "house", "melodictechno", "afrohouse", "cinematic"]);
 
   /// Pianist voicing under the melody note: right hand = up to 3 chord tones just below the melody
   /// (3rd and 7th first, then 5th / 9th / root), left hand = root in the bass plus fifth or octave.
-  function geniusVoicing(c, melody) {
+  function geniusVoicing(c, melody, prevBass = null) {
     const tones = [...new Set(Q[c.quality].iv.map(i => mod12(c.root + i)))];
     const rank = t => { const r = mod12(t - c.root); return [3, 4, 10, 11].includes(r) ? 0 : r === 7 || r === 6 || r === 8 ? 1 : r === 2 || r === 9 || r === 5 ? 2 : 3; };
     const ordered = tones.filter(t => t !== mod12(melody)).sort((a, b) => rank(a) - rank(b)).slice(0, 3);
@@ -832,12 +910,25 @@ const CP = (() => {
     const low = rh.length ? Math.min(...rh) : melody;
     let r = Math.min(low - 3, 52); while (mod12(r) !== c.root) r--;
     if (r < 28) r += 12;
-    const lh = [r];
-    if (r + 7 < low - 2) lh.push(r + 7); else if (r + 12 < low - 2) lh.push(r + 12);
+    // Connected bass line: the root (or the 3rd, as an inversion) in the octave closest to the previous bass.
+    let bass = r, isThird = false;
+    if (prevBass !== null) {
+      const third = mod12(c.root + Q[c.quality].iv[1]);
+      let best = 1e9;
+      for (let n = 28; n <= Math.min(52, low - 3); n++) {
+        const pc = mod12(n);
+        if (pc !== c.root && pc !== third) continue;
+        const cost = Math.abs(n - prevBass) + (pc === third ? 3 : 0);
+        if (cost < best) { best = cost; bass = n; isThird = pc === third; }
+      }
+    }
+    const lh = [bass];
+    if (isThird) { let up = bass + 1; while (mod12(up) !== c.root) up++; if (up < low - 1) lh.push(up); }
+    else if (bass + 7 < low - 2) lh.push(bass + 7); else if (bass + 12 < low - 2) lh.push(bass + 12);
     return [...new Set(lh.concat(rh))].filter(n => n >= 24 && n < melody).sort((x, y) => x - y);
   }
 
-  return { DRUMS, drumHits, modulations, inspire, analyzeTrack, INSPIRE_NAMES, geniusVoicing, VOICING_STYLES, oneFingerTable, styleVoicing, lockToScale, patternToMidi, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
+  return { leftHandVoicing, rightHandVoicing, DRUMS, drumHits, modulations, inspire, analyzeTrack, INSPIRE_NAMES, geniusVoicing, VOICING_STYLES, oneFingerTable, styleVoicing, lockToScale, patternToMidi, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
            GENRES, PIANOS, SCALE_NAMES, Engine, buildPattern, prefersFlats, pcs, ARPEGGIOS, MELODY_NAMES, MELODY_COUNT, rng };
 })();
 if (typeof module !== "undefined") module.exports = CP;

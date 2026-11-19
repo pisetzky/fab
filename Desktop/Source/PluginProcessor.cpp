@@ -39,6 +39,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
     l.add(std::make_unique<AudioParameterInt>(ParameterID { "transpose", 1 }, "Trasponi", -12, 12, 0));
     l.add(std::make_unique<AudioParameterChoice>(ParameterID { "voicing", 1 }, "Voicing", voicings, 0));
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "drums", 1 }, "Batteria", false));
+    l.add(std::make_unique<AudioParameterBool>(ParameterID { "hands", 1 }, "Due mani", false));
+    l.add(std::make_unique<AudioParameterBool>(ParameterID { "notesonly", 1 }, "Solo note (Genio)", false));
+    l.add(std::make_unique<AudioParameterInt>(ParameterID { "split", 1 }, "Divisione mani", 36, 84, 60));
     return l;
 }
 }
@@ -100,13 +103,13 @@ void ChordPilotProcessor::timerCallback() {
         int s1, n1, s2, n2; int ready = geniusFifo.getNumReady();
         geniusFifo.prepareToRead(ready, s1, n1, s2, n2);
         auto consume = [this](int v) {
-            if (v & 0x10000) geniusEngine.noteOn(v & 0x7f, 100);
+            if (v & 0x10000) { geniusEngine.noteOn(v & 0x7f, 100); geniusEngine.geniusPlayed(v & 0x7f); }
             else if (v & 0x20000) geniusEngine.commit(cp::makeChord((v >> 8) & 0xff, v & 0xff));
         };
         for (int i = 0; i < n1; ++i) consume(geniusFifoData[(size_t) (s1 + i)]);
         for (int i = 0; i < n2; ++i) consume(geniusFifoData[(size_t) (s2 + i)]);
         geniusFifo.finishedRead(n1 + n2);
-        if (n1 + n2 > 0) geniusDirty = 1;
+        if (n1 + n2 > 0) { geniusDirty = 1; ++geniusVersion; }
     }
     if (geniusDirty || now != lastParamState) { rebuildGeniusTable(); geniusDirty = 0; }
     if (now != lastParamState || (now[1] == 0 && det != lastDetected)) {
@@ -150,7 +153,8 @@ void ChordPilotProcessor::rebuildGeniusTable() {
     auto chords = cp::oneFingerTable(geniusEngine);
     for (int pc = 0; pc < 12; ++pc) {
         auto& e = (*of)[(size_t) pc]; const auto& c = chords[(size_t) pc];
-        e.root = c.root; e.numTones = std::min(6, (int) c.tones.size());
+        e.root = c.root; e.quality = c.quality; e.numTones = std::min(6, (int) c.tones.size());
+        cp::Chord lc = geniusEngine.geniusLeft(60 + pc); e.leftRoot = lc.root; e.leftQuality = lc.quality;
         for (int i = 0; i < e.numTones; ++i) e.tones[i] = c.tones[(size_t) i];
         e.lockShift = cp::lockToScale(geniusEngine, 60 + pc) - (60 + pc);
     }
@@ -197,6 +201,7 @@ long long ChordPilotProcessor::humanDelay() {
 }
 
 void ChordPilotProcessor::geniusChordOff(int offset, juce::MidiBuffer& out) {
+    for (auto& d : delayed) if (d.active && d.st == 0x92) d.active = false;   // cancel notes of a roll still pending
     for (int i = 0; i < geniusCount; ++i) {
         synth.noteOff(geniusNotes[i], 4);
         out.addEvent(juce::MidiMessage::noteOff(3, geniusNotes[i]), offset);
@@ -211,6 +216,9 @@ void ChordPilotProcessor::handleInput(const juce::MidiMessage& m, int offset, ju
     const int transpose = (int) params.getRawParameterValue("transpose")->load();
     const int raw = m.getNoteNumber();
     const int pressed = juce::jlimit(0, 127, raw + transpose);
+
+    // Two hands: left = chord with its own bass, right = melody (+ chord tones under it), like a pianist.
+    if (params.getRawParameterValue("hands")->load() > 0.5f && handleTwoHands(m, raw, pressed, offset, out)) return;
 
     // Pro: one-finger chords — the key plays the chord of the scale built on it.
     if (params.getRawParameterValue("onefinger")->load() > 0.5f) {
@@ -276,16 +284,32 @@ void ChordPilotProcessor::handleInput(const juce::MidiMessage& m, int offset, ju
     const int n = juce::jlimit(0, 127, pressed + e.shift);
     const long long now = sampleClock + offset;
     bool fits = false; for (int i = 0; i < geniusNumTones; ++i) fits |= geniusTones[i] == cp::mod12(n);
-    if (!(geniusChordOn && fits && now - geniusChangedAt < (long long) (0.18 * sampleRate))) {
+    const bool notesOnly = params.getRawParameterValue("notesonly")->load() > 0.5f;
+    if (notesOnly && !(geniusChordOn && fits && now - geniusChangedAt < (long long) (0.18 * sampleRate))) {
+        // Single notes: the harmony moves on silently (for the next suggestions), only the melody sounds.
         geniusChordOff(offset, out);
-        geniusCount = cp::geniusVoicing(e.tones, e.numTones, e.root, n, geniusNotes);
+        geniusNumTones = e.numTones; for (int i = 0; i < e.numTones; ++i) geniusTones[i] = e.tones[i];
+        geniusChordOn = true; geniusChangedAt = now;
+        int s1, n1, s2, n2; geniusFifo.prepareToWrite(1, s1, n1, s2, n2);
+        if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x20000 | (e.root << 8) | e.quality; geniusFifo.finishedWrite(1); }
+    } else if (!(geniusChordOn && fits && now - geniusChangedAt < (long long) (0.18 * sampleRate))) {
+        geniusChordOff(offset, out);
+        geniusCount = cp::geniusVoicing(e.tones, e.numTones, e.root, n, geniusNotes, geniusPrevBass);
+        if (geniusCount > 0) geniusPrevBass = geniusNotes[0];
         geniusNumTones = e.numTones; for (int i = 0; i < e.numTones; ++i) geniusTones[i] = e.tones[i];
         const auto vel = (juce::uint8) juce::jlimit(1, 127, (int) (m.getVelocity() * 0.62f));
         const bool synthOn = params.getRawParameterValue("synth")->load() > 0.5f;
+        // Pianist touch: a quick roll from the bass up, the bass fuller than the inner voices.
+        const int strumMs = std::max(12, (int) params.getRawParameterValue("strum")->load());
         for (int i = 0; i < geniusCount; ++i) {
-            if (synthOn) synth.noteOn(geniusNotes[i], vel, 4);
-            out.addEvent(juce::MidiMessage::noteOn(3, geniusNotes[i], vel), offset);   // chords on MIDI channel 3
+            const int v = juce::jlimit(1, 127, (int) (m.getVelocity() * (i == 0 ? 0.72f : 0.5f)));
+            const long long delay = (long long) (strumMs / 1000.0 * sampleRate * i);
+            if (delay == 0) {
+                if (synthOn) synth.noteOn(geniusNotes[i], v, 4);
+                out.addEvent(juce::MidiMessage::noteOn(3, geniusNotes[i], (juce::uint8) v), offset);   // chords on MIDI channel 3
+            } else enqueue(sampleClock + offset + delay, 0x92, geniusNotes[i], v, true);
         }
+        juce::ignoreUnused(vel);
         geniusChordOn = true; geniusChangedAt = now;
         int s1, n1, s2, n2; geniusFifo.prepareToWrite(1, s1, n1, s2, n2);
         if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x20000 | (e.root << 8) | e.quality; geniusFifo.finishedWrite(1); }
@@ -329,6 +353,78 @@ void ChordPilotProcessor::recordForInspiration(const juce::MidiMessage& m, int o
     }
 }
 
+bool ChordPilotProcessor::handleTwoHands(const juce::MidiMessage& m, int raw, int pressed, int offset, juce::MidiBuffer& out) {
+    auto& slot = oneFingerHeld[(size_t) raw];
+    if (m.isNoteOff()) {
+        if (slot[0] == 0) return false;
+        for (int i = 1; i <= slot[0]; ++i) {
+            bool still = false;
+            for (int k = 0; k < 128 && !still; ++k) if (k != raw) for (int j = 1; j <= oneFingerHeld[(size_t) k][0]; ++j) still |= oneFingerHeld[(size_t) k][(size_t) j] == slot[(size_t) i];
+            if (!still) handleMidi(juce::MidiMessage::noteOff(m.getChannel(), slot[(size_t) i]), offset, out, false);
+        }
+        slot[0] = 0;
+        return true;
+    }
+    auto table = std::atomic_load(&oneFinger);
+    if (!table) return false;
+    const int split = (int) params.getRawParameterValue("split")->load();
+    const bool genius = params.getRawParameterValue("genius")->load() > 0.5f;
+    const long long now = sampleClock + offset;
+    const auto& e = (*table)[(size_t) cp::mod12(pressed)];
+    int notes[8]; int cnt = 0; bool roll = false;
+    if (pressed < split) {
+        handRoot = genius ? e.leftRoot : e.root; handQuality = genius ? e.leftQuality : e.quality;
+        cnt = cp::leftHandVoicing(handRoot, handQuality, pressed, split, notes);
+        handNumTones = 0;
+        for (int iv : cp::qualities()[(size_t) handQuality].iv) {
+            int t = cp::mod12(handRoot + iv); bool dup = false;
+            for (int j = 0; j < handNumTones; ++j) dup |= handTones[j] == t;
+            if (!dup && handNumTones < 6) handTones[handNumTones++] = t;
+        }
+        handChordAt = now; roll = true;
+        int s1, n1, s2, n2; geniusFifo.prepareToWrite(1, s1, n1, s2, n2);
+        if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x20000 | (handRoot << 8) | handQuality; geniusFifo.finishedWrite(1); }
+    } else {
+        bool leftHeld = false;
+        for (int k = 0; k < 128 && !leftHeld; ++k) leftHeld = oneFingerHeld[(size_t) k][0] > 0 && k + (int) params.getRawParameterValue("transpose")->load() < split;
+        const bool leftActive = handRoot >= 0 && (leftHeld || now - handChordAt < (long long) (2.5 * sampleRate));
+        if (genius && leftActive) {
+            int mel = pressed; bool found = false;
+            for (int d : { 0, -1, 1, -2, 2 }) {
+                int c = pressed + d; if (c < split) continue;
+                for (int j = 0; j < handNumTones; ++j) if (handTones[j] == cp::mod12(c)) { mel = c; found = true; break; }
+                if (found) break;
+            }
+            if (!found) { mel = pressed + e.lockShift; if (mel < split) mel = pressed; }
+            cnt = cp::rightHandVoicing(handTones, handNumTones, handRoot, mel, split, notes);
+            int s1, n1, s2, n2; geniusFifo.prepareToWrite(1, s1, n1, s2, n2);
+            if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x10000 | mel; geniusFifo.finishedWrite(1); }
+        } else if (genius) {
+            return false;    // right hand alone: full Genius mode
+        } else {
+            notes[0] = params.getRawParameterValue("scalelock")->load() > 0.5f ? juce::jlimit(0, 127, pressed + e.lockShift) : pressed;
+            cnt = 1;
+        }
+    }
+    if (params.getRawParameterValue("notesonly")->load() > 0.5f && cnt > 1) {
+        // Single notes: the left hand plays just its bass (lowest note), the right hand just the melody (top note).
+        if (pressed >= split) notes[0] = notes[cnt - 1];
+        cnt = 1;
+    }
+    cnt = std::min(cnt, 9);
+    slot[0] = cnt;
+    const int strumMs = std::max(10, (int) params.getRawParameterValue("strum")->load());
+    for (int i = 0; i < cnt; ++i) {
+        slot[(size_t) (i + 1)] = notes[i];
+        const float f = cnt == 1 ? 1.0f : pressed < split ? (i == 0 ? 0.8f : 0.55f) : (i == cnt - 1 ? 1.0f : 0.55f);
+        const int vel = humanVel(juce::jlimit(1, 127, (int) (m.getVelocity() * f)));
+        const long long delay = (roll ? (long long) (strumMs / 1000.0 * sampleRate * i) : 0) + humanDelay();
+        if (delay == 0) handleMidi(juce::MidiMessage::noteOn(m.getChannel(), notes[i], (juce::uint8) vel), offset, out, false);
+        else enqueue(sampleClock + offset + delay, (juce::uint8) (0x90 | (m.getChannel() - 1)), notes[i], vel, false);
+    }
+    return true;
+}
+
 void ChordPilotProcessor::newSong() {
     juce::Random r;
     const auto& g = cp::genres()[(size_t) genreIndex()];
@@ -357,6 +453,14 @@ void ChordPilotProcessor::prepareToPlay(double sr, int samplesPerBlock) {
 void ChordPilotProcessor::handleMidi(const juce::MidiMessage& m, int offset, juce::MidiBuffer& out, bool fromPattern) {
     const bool suggestionLane = !fromPattern && m.getChannel() == 16;
     const bool melodyLane = fromPattern && m.getChannel() == 2;   // genre-player melody is sent on MIDI channel 2
+    const bool geniusLane = fromPattern && m.getChannel() == 3;   // rolled Genius chords (delayed queue)
+    if (geniusLane) {
+        const bool synthOn = params.getRawParameterValue("synth")->load() > 0.5f;
+        if (m.isNoteOn()) { if (synthOn) synth.noteOn(m.getNoteNumber(), m.getVelocity(), 4); }
+        else if (m.isNoteOff()) synth.noteOff(m.getNoteNumber(), 4);
+        out.addEvent(m, offset);
+        return;
+    }
     const int lane = fromPattern ? (melodyLane ? 3 : 1) : (suggestionLane ? 2 : 0);
     auto& patArray = melodyLane ? melodyNotes : patternNotes;
     const bool synthOn = params.getRawParameterValue("synth")->load() > 0.5f;
@@ -479,7 +583,7 @@ void ChordPilotProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         nextStep = (long long) std::ceil(stepPhase - 1e-9); seek();
     } else if (!wantPlay && isPlaying) {
         isPlaying = false;
-        for (auto& d : delayed) if (d.pattern) d.active = false;
+        for (auto& d : delayed) if (d.pattern && d.st != 0x92) d.active = false;
         releasePattern(0, out);
     }
     const double samplesPerStep = sampleRate * 60.0 / std::max(20.0, tempo) / 4.0;

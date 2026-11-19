@@ -10,6 +10,9 @@ final class PianoKeyboardUIView: UIView {
     var held: Set<Int> = [] { didSet { if oldValue != held { setNeedsDisplay() } } }
     var patternNotes: Set<Int> = [] { didSet { if oldValue != patternNotes { setNeedsDisplay() } } }
     var melodyNotes: Set<Int> = [] { didSet { if oldValue != melodyNotes { setNeedsDisplay() } } }
+    var geniusNext: [Int: String] = [:] { didSet { if oldValue != geniusNext { setNeedsDisplay() } } }
+    var splitNote: Int? = nil { didSet { if oldValue != splitNote { setNeedsDisplay() } } }
+    var hideHints = false { didSet { if oldValue != hideHints { setNeedsDisplay() } } }
     var highlights: [Int: KeyHighlight] = [:] { didSet { if oldValue != highlights { setNeedsDisplay() } } }
     var accent: UIColor = .systemPink { didSet { setNeedsDisplay() } }
     var showScale = true { didSet { setNeedsDisplay() } }
@@ -107,8 +110,12 @@ final class PianoKeyboardUIView: UIView {
         base.setFill()
         path.fill()
 
-        // Glow for suggestions
-        if let h = h, h.role >= .melody || (showScale && h.role >= .scale) {
+        // Two hands: left-hand zone tinted, gold line at the split.
+        if let split = splitNote, n < split, !black {
+            UIColor(red: 0.85, green: 0.94, blue: 1.0, alpha: 1).setFill(); path.fill()
+        }
+        // Glow for suggestions (hidden in easy mode, where only the gold keys guide the player)
+        if !hideHints, let h = h, h.role >= .melody || (showScale && h.role >= .scale) {
             ctx.saveGState()
             path.addClip()
             let c = color(for: h)
@@ -155,6 +162,20 @@ final class PianoKeyboardUIView: UIView {
         if melodyNotes.contains(n) {
             UIColor(hex: 0xFF6FB5).setFill()
             UIBezierPath(roundedRect: CGRect(x: f.minX + 3, y: 13, width: f.width - 6, height: 6), cornerRadius: 3).fill()
+        }
+
+        // Pianist mode: gold outline + chord the key will produce.
+        if let chordLabel = geniusNext[n] {
+            let gold = UIColor(hex: 0xFFC233)
+            ctx.saveGState(); gold.setStroke(); path.lineWidth = 3; path.stroke(); ctx.restoreGState()
+            let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 10, weight: .heavy), .foregroundColor: UIColor(hex: 0x3A2400)]
+            let size = (chordLabel as NSString).size(withAttributes: attrs)
+            let tag = CGRect(x: f.midX - size.width / 2 - 4, y: black ? 12 : f.maxY - 64, width: size.width + 8, height: size.height + 4)
+            gold.setFill(); UIBezierPath(roundedRect: tag, cornerRadius: 5).fill()
+            (chordLabel as NSString).draw(at: CGPoint(x: tag.minX + 4, y: tag.minY + 2), withAttributes: attrs)
+        }
+        if let split = splitNote, n == split {
+            UIColor(hex: 0xFFC233).setFill(); UIBezierPath(rect: CGRect(x: f.minX, y: 0, width: 3, height: f.height)).fill()
         }
 
         // Held notes: bright outline.
@@ -243,6 +264,9 @@ struct PianoKeyboard: UIViewRepresentable {
         v.held = controller.held
         v.patternNotes = controller.patternNotes
         v.melodyNotes = controller.melodyNotes
+        v.geniusNext = controller.genius ? controller.geniusNext : [:]
+        v.splitNote = controller.twoHands ? Int(controller.proValue(.split)) : nil
+        v.hideHints = controller.easyMode
         v.highlights = controller.result.highlights
         v.accent = accent
         v.showScale = controller.showScaleHints

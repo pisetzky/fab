@@ -495,6 +495,88 @@ std::vector<OneFingerChord> oneFingerTable(const Engine& e) {
     return out;
 }
 
+Chord Engine::geniusLeft(int note) {
+    Key k = currentKey();
+    auto scale = scaleSet(k, scaleFor(*genre, k));
+    int m = note; for (int d : { 0, -1, 1, -2, 2 }) if (scale.count(mod12(note + d))) { m = note + d; break; }
+    int pc = mod12(m);
+    Result ctx = suggest({});
+    const Chord* last = history.empty() ? nullptr : &history.back();
+    std::optional<Chord> pick;
+    for (auto& s : ctx.chords) if (!(last && s.chord.loose(*last)) && s.chord.root == pc) { pick = s.chord; break; }
+    if (!pick) for (auto& s : ctx.chords) if (!(last && s.chord.loose(*last)) && s.chord.pcs().count(pc)) { pick = s.chord; break; }
+    Chord ch = pick ? *pick : makeChord(pc, qualityIndex(k.minor ? "minor" : "major"));
+    if (!pick) for (auto& d : diatonic(k, scaleFor(*genre, k), 1)) if (d.root == pc) ch = d;
+    static const std::set<std::string> rich = { "jazz", "rnb", "gospel", "lofi", "latin", "house", "melodictechno", "afrohouse", "cinematic" };
+    if (rich.count(genre->id) && complexity >= 1) ch = adjust(ch, 2);
+    return ch;
+}
+
+int leftHandVoicing(int root, int quality, int pressed, int split, int* out) {
+    const auto& ivs = qualities()[(size_t) quality].iv;
+    int r = pressed + 2; while (mod12(r) != root) --r;
+    while (r + 11 >= split && r - 12 >= 28) r -= 12;
+    int third = ivs[1] % 12, upper2 = (ivs.size() > 3 && ivs[3] % 12 > third) ? ivs[3] % 12 : ivs[2] % 12;
+    int count = 0;
+    for (int n : { r, r + third, r + upper2 }) if (n < split && n >= 24) out[count++] = n;
+    return count;
+}
+
+int rightHandVoicing(const int* tones, int numTones, int root, int melody, int split, int* out) {
+    auto rank = [root](int t) { int r = mod12(t - root);
+        return (r == 3 || r == 4 || r == 10 || r == 11) ? 0 : (r == 6 || r == 7 || r == 8) ? 1 : r == 0 ? 3 : 2; };
+    int cand[6]; int nc = 0;
+    for (int i = 0; i < numTones && nc < 6; ++i) if (tones[i] != mod12(melody)) cand[nc++] = tones[i];
+    std::stable_sort(cand, cand + nc, [&](int a, int b) { return rank(a) < rank(b); });
+    int count = 0;
+    for (int i = 0; i < std::min(nc, 2); ++i) { int n = melody - 1; while (mod12(n) != cand[i]) --n; if (n >= melody - 11 && n >= split) out[count++] = n; }
+    out[count++] = melody;
+    std::sort(out, out + count);
+    return count;
+}
+
+std::vector<Engine::GeniusNext> Engine::geniusNext() {
+    Key k = currentKey();
+    auto scale = scaleSet(k, scaleFor(*genre, k));
+    const int prev = geniusMelody.empty() ? genre->octave + 7 : geniusMelody.back();
+    Result ctx = suggest({});
+    const Chord* last = history.empty() ? nullptr : &history.back();
+    static const std::set<std::string> rich = { "jazz", "rnb", "gospel", "lofi", "latin", "house", "melodictechno", "afrohouse", "cinematic" };
+    std::vector<GeniusNext> out;
+    const size_t L = geniusMelody.size();
+    for (int n = prev - 7; n <= prev + 7; ++n) {
+        if (n == prev || !scale.count(mod12(n))) continue;
+        int pc = mod12(n), idx = -1;
+        for (size_t i = 0; i < ctx.chords.size(); ++i)
+            if (ctx.chords[i].chord.pcs().count(pc) && !(last && ctx.chords[i].chord.loose(*last))) { idx = (int) i; break; }
+        if (idx < 0) continue;
+        Chord c = ctx.chords[(size_t) idx].chord;
+        int d = std::abs(n - prev);
+        double score = 10 - 1.5 * idx;
+        score += d <= 2 ? 3 : d <= 4 ? 2 : d == 5 ? 1 : d == 7 ? 0.5 : -1;
+        int rel = mod12(pc - c.root);
+        if (rel == 0) score += 1; else if (rel == 3 || rel == 4) score += 1.5;
+        if (L >= 2) {
+            int lastIv = prev - geniusMelody[L - 2];
+            auto sgn = [](int x) { return (x > 0) - (x < 0); };
+            if (std::abs(lastIv) > 4 && sgn(n - prev) == -sgn(lastIv) && d <= 2) score += 2;
+            if (L >= 3 && n - prev == geniusMelody[L - 2] - geniusMelody[L - 3]) score += 2;
+        }
+        if (L % 4 == 3 && pc == k.tonic) score += 2.5;
+        if (n > prev && L % 4 == 1) score += 0.5;
+        if (rich.count(genre->id) && complexity >= 1) c = adjust(c, 2);
+        out.push_back({ n, c, score });
+    }
+    std::stable_sort(out.begin(), out.end(), [](const GeniusNext& a, const GeniusNext& b) { return a.score > b.score; });
+    std::vector<GeniusNext> best;
+    for (auto& o : out) {
+        bool dup = false; for (auto& b : best) dup |= b.chord.root == o.chord.root && b.chord.quality == o.chord.quality;
+        if (!dup) best.push_back(o);
+        if (best.size() == 3) break;
+    }
+    return best;
+}
+
 int lockToScale(const Engine& e, int note) {
     Key k = e.currentKey();
     auto sc = scaleSet(k, scaleFor(*e.genre, k));
@@ -525,7 +607,7 @@ int styleVoicing(const int* tones, int numTones, int root, int rootNote, int sty
 
 // Pianist voicing: right hand = up to 3 chord tones just below the melody (3rd/7th first, then 5th, 9th, root);
 // left hand = root in the bass plus fifth or octave.
-int geniusVoicing(const int* tones, int numTones, int root, int melody, int* out) {
+int geniusVoicing(const int* tones, int numTones, int root, int melody, int* out, int prevBass) {
     auto rank = [root](int t) { int r = mod12(t - root);
         return (r == 3 || r == 4 || r == 10 || r == 11) ? 0 : (r == 7 || r == 6 || r == 8) ? 1 : (r == 2 || r == 9 || r == 5) ? 2 : 3; };
     int ordered[6]; int no = 0;
@@ -537,10 +619,24 @@ int geniusVoicing(const int* tones, int numTones, int root, int melody, int* out
     int low = melody; for (int i = 0; i < nr; ++i) low = std::min(low, rh[i]);
     int r = std::min(low - 3, 52); while (mod12(r) != root) --r;
     if (r < 28) r += 12;
+    // Connected bass line: root (or 3rd, as an inversion) in the octave closest to the previous bass.
+    int bass = r; bool isThird = false;
+    if (prevBass >= 0) {
+        int third = -1;
+        for (int i = 0; i < numTones; ++i) { int rel = mod12(tones[i] - root); if (rel == 3 || rel == 4) third = tones[i]; }
+        int best = 1 << 30;
+        for (int n = 28; n <= std::min(52, low - 3); ++n) {
+            int pc = mod12(n);
+            if (pc != root && pc != third) continue;
+            int cost = std::abs(n - prevBass) + (pc == third ? 3 : 0);
+            if (cost < best) { best = cost; bass = n; isThird = pc == third; }
+        }
+    }
     int count = 0;
     auto add = [&](int n) { if (n < 24 || n >= melody) return; for (int j = 0; j < count; ++j) if (out[j] == n) return; out[count++] = n; };
-    add(r);
-    if (r + 7 < low - 2) add(r + 7); else if (r + 12 < low - 2) add(r + 12);
+    add(bass);
+    if (isThird) { int up = bass + 1; while (mod12(up) != root) ++up; if (up < low - 1) add(up); }
+    else if (bass + 7 < low - 2) add(bass + 7); else if (bass + 12 < low - 2) add(bass + 12);
     for (int i = 0; i < nr; ++i) add(rh[i]);
     std::sort(out, out + count);
     return count;

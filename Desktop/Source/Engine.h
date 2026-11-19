@@ -82,6 +82,13 @@ public:
     struct GeniusChoice { int note; Chord chord; int shift; };
     /// Genius mode: closest note that fits the song + the next chord that harmonises it.
     GeniusChoice genius(int note);
+    /// Pianist mode: remember the melody played in Genius mode and suggest the next notes (each with its chord).
+    void geniusPlayed(int note) { geniusMelody.push_back(note); if (geniusMelody.size() > 8) geniusMelody.erase(geniusMelody.begin()); }
+    struct GeniusNext { int note; Chord chord; double score; };
+    /// Two hands – left hand: the progression chord built on the pressed note.
+    Chord geniusLeft(int note);
+    std::vector<GeniusNext> geniusNext();
+    std::vector<int> geniusMelody;
 
 private:
     std::vector<Chord> history;
@@ -102,7 +109,12 @@ int lockToScale(const Engine& e, int note);
 int styleVoicing(const int* tones, int numTones, int root, int rootNote, int style, int* out);
 
 /// Chord tones voiced just below `melody` plus the root in the bass. Allocation-free (real-time safe).
-int geniusVoicing(const int* tones, int numTones, int root, int melody, int* out);
+int geniusVoicing(const int* tones, int numTones, int root, int melody, int* out, int prevBass = -1);
+/// Two hands, like a real pianist (each hand within an octave, no extra notes). RT-safe.
+/// Left hand: root at the pressed key's position + 3rd and 7th (or 3rd and 5th), kept below `split`.
+int leftHandVoicing(int root, int quality, int pressed, int split, int* out);
+/// Right hand: melody + up to two chord tones under it (3rd/7th first), never below `split`.
+int rightHandVoicing(const int* tones, int numTones, int root, int melody, int split, int* out);
 Key progressionKey(const Genre& g, const Key& k);
 
 struct PatternEvent { int step; int note; int vel; int lane = 0; };   // lane 0 = chords/bass, 1 = melody

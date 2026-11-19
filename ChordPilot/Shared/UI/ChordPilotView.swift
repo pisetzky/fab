@@ -183,10 +183,14 @@ public struct ChordPilotView: View {
             let compact = geo.size.height < 520
             VStack(spacing: compact ? 6 : 10) {
                 header(compact: compact)
-                statusRow
-                songBar
-                suggestionStrip(compact: compact)
-                if controller.isPlaying || !compact { progressionStrip }
+                if controller.easyMode {
+                    easyBar
+                } else {
+                    statusRow
+                    songBar
+                    suggestionStrip(compact: compact)
+                    if controller.isPlaying || !compact { progressionStrip }
+                }
                 keyboardArea
                     .frame(minHeight: 120)
             }
@@ -216,18 +220,26 @@ public struct ChordPilotView: View {
 
             genreMenu
             pianoMenu
-            keyMenu
+            if !controller.easyMode {
+                keyMenu
 
-            Picker("Complessità", selection: Binding(get: { controller.complexity },
-                                                    set: { controller.setComplexity($0) })) {
-                ForEach(ChordComplexity.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                Picker("Complessità", selection: Binding(get: { controller.complexity },
+                                                        set: { controller.setComplexity($0) })) {
+                    ForEach(ChordComplexity.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 260)
 
             Spacer(minLength: 4)
 
-            playerControls
+            if !controller.easyMode { playerControls }
+            Button { controller.easyMode.toggle() } label: {
+                Text(controller.easyMode ? "🎛 Avanzata" : "😊 Facile").font(.system(size: 14, weight: .bold))
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(Capsule().stroke(Aurora.green.opacity(0.6), lineWidth: 1))
+                    .foregroundColor(.white)
+            }
             optionsMenu
             if let extra = trailingToolbar { extra }
         }
@@ -348,6 +360,41 @@ public struct ChordPilotView: View {
         .foregroundColor(.white)
     }
 
+    // MARK: Easy mode
+
+    private var playModePicker: some View {
+        Picker("Ogni tasto suona", selection: Binding(get: { controller.notesOnly }, set: { controller.setNotesOnly($0) })) {
+            Text("🎹 Accordi").tag(false)
+            Text("🎵 Note").tag(true)
+        }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 260)
+    }
+
+    private var easyBar: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                playModePicker
+                Button { controller.newSong() } label: {
+                    Label("Nuova canzone", systemImage: "dice.fill").font(.system(size: 15, weight: .bold))
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(Capsule().fill(LinearGradient(colors: [Aurora.pink.opacity(0.45), Aurora.violet.opacity(0.45)], startPoint: .leading, endPoint: .trailing)))
+                        .foregroundColor(.white)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("STAI SUONANDO").font(.system(size: 9, weight: .bold)).foregroundColor(.white.opacity(0.5))
+                    Text(controller.result.currentChord.map { controller.chordName($0) } ?? "—")
+                        .font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundColor(.white)
+                }
+            }
+            Text("✨ Tocca tasti a caso: ogni nota diventa musica giusta. I tasti d'oro sono un buon prossimo passo.")
+                .font(.system(size: 15, weight: .semibold)).foregroundColor(.white.opacity(0.85))
+                .padding(.horizontal, 16).padding(.vertical, 8)
+                .background(Capsule().fill(Color.black.opacity(0.35)))
+        }
+    }
+
     // MARK: Song bar: arpeggio, melody, new song, genius mode
 
     private var songBar: some View {
@@ -394,6 +441,11 @@ public struct ChordPilotView: View {
                         .shadow(color: controller.genius ? Aurora.green.opacity(0.6) : .clear, radius: 10)
                 }
                 .accessibilityLabel(controller.genius ? "Disattiva Modalità Genio" : "Attiva Modalità Genio")
+                playModePicker
+                Toggle(isOn: Binding(get: { controller.twoHands }, set: { controller.setTwoHands($0) })) {
+                    Text("🙌 Due mani").font(.system(size: 14, weight: .bold))
+                }
+                .toggleStyle(.button)
                 Button { showInspiration = true } label: {
                     Label("Ispirazione", systemImage: "lightbulb.fill")
                         .font(.system(size: 14, weight: .bold))

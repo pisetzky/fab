@@ -117,6 +117,9 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
             p("swing", "Swing (%)", .swing, 0, 60, .percent),
             p("transpose", "Trasponi", .transpose, -12, 12, .relativeSemiTones),
             p("drums", "Batteria", .drums, 0, 1, .boolean),
+            p("hands", "Due mani", .hands, 0, 1, .boolean),
+            p("split", "Divisione mani", .split, 36, 84, .midiNoteNumber),
+            p("notesonly", "Solo note (Genio)", .notesOnly, 0, 1, .boolean),
             p("voicing", "Voicing", .voicing, 0, AUValue(SuggestionEngine.voicingStyles.count - 1), .indexed, SuggestionEngine.voicingStyles)
         ]
         params[Int(ParamAddress.volume.rawValue)].value = 0.8
@@ -168,6 +171,9 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         case .transpose: return AUValue(kernel.transpose)
         case .voicing: return AUValue(kernel.voicingStyle)
         case .drums: return kernel.drumsEnabled ? 1 : 0
+        case .hands: return kernel.twoHandsEnabled ? 1 : 0
+        case .split: return AUValue(kernel.splitNote)
+        case .notesOnly: return kernel.notesOnly ? 1 : 0
         case .none: return 0
         }
     }
@@ -220,6 +226,9 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         case .transpose: kernel.transpose = Int(value.rounded())
         case .voicing: kernel.voicingStyle = Int(value.rounded())
         case .drums: kernel.drumsEnabled = value > 0.5
+        case .hands: kernel.twoHandsEnabled = value > 0.5; scheduleGeniusRefresh()
+        case .split: kernel.splitNote = max(36, min(84, Int(value.rounded())))
+        case .notesOnly: kernel.notesOnly = value > 0.5
         case .none: break
         }
         if rebuild { schedulePatternRebuild() } else { notifyStateChange() }
@@ -281,7 +290,7 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
     private func scheduleGeniusRefresh() {
         let work = { [weak self] in
             guard let self else { return }
-            let needsTable = self.genius || self.kernel.oneFingerEnabled || self.kernel.scaleLockEnabled
+            let needsTable = self.genius || self.kernel.oneFingerEnabled || self.kernel.scaleLockEnabled || self.kernel.twoHandsEnabled
             if needsTable && self.geniusTimer == nil {
                 let t = Timer(timeInterval: 1.0 / 15.0, repeats: true) { [weak self] _ in self?.geniusTick() }
                 RunLoop.main.add(t, forMode: .common)
@@ -298,7 +307,7 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         var msg: UInt32 = 0, changed = false
         while cp_ring_pop(kernel.geniusRing, &msg) {
             changed = true
-            if msg & 0x10000 != 0 { geniusEngine.registerNoteOn(Int(msg & 0x7F)) }
+            if msg & 0x10000 != 0 { geniusEngine.registerNoteOn(Int(msg & 0x7F)); geniusEngine.geniusPlayed(Int(msg & 0x7F)) }
             else if msg & 0x20000 != 0 {
                 let q = ChordQuality.allCases[min(ChordQuality.allCases.count - 1, Int(msg & 0xFF))]
                 geniusEngine.commit(chord: Chord(root: Int((msg >> 8) & 0xFF), quality: q))
@@ -306,6 +315,11 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         }
         if changed { refreshGeniusTable() }
     }
+
+    /// Bumps whenever the musical context of Genius mode changes (the UI then refreshes its suggestions).
+    public private(set) var geniusVersion = 0
+    /// Pianist mode: the suggested next melody notes, each with the chord it will produce.
+    public func geniusSuggestions() -> [(note: Int, chord: Chord)] { geniusEngine.geniusNext() }
 
     private func refreshGeniusTable() {
         if geniusEngine.genre != genre { geniusEngine.genre = genre; geniusEngine.reset() }
@@ -319,7 +333,19 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         }
         let of = geniusEngine.oneFingerTable().map { (root: $0.root, tones: $0.tones) }
         let locks = (0..<12).map { geniusEngine.lockToScale(60 + $0) - (60 + $0) }
-        kernel.publishGeniusTable(entries, oneFinger: of, lockShifts: locks)
+        let ofChords = geniusEngine.oneFingerTable()
+        let hands: [(ofThird: Int, ofUpper: Int, leftRoot: Int, leftThird: Int, leftUpper: Int, leftQuality: Int)] = (0..<12).map { pc in
+            func shell(_ q: ChordQuality) -> (Int, Int) {
+                let iv = q.intervals.map { $0 % 12 }
+                return (iv[1], iv.count > 3 && iv[3] > iv[1] ? iv[3] : iv[2])
+            }
+            let o = shell(ofChords[pc].quality)
+            let left = geniusEngine.geniusLeft(60 + pc)
+            let l = shell(left.quality)
+            return (o.0, o.1, left.root, l.0, l.1, ChordQuality.allCases.firstIndex(of: left.quality) ?? 0)
+        }
+        kernel.publishGeniusTable(entries, oneFinger: of, lockShifts: locks, hands: hands)
+        geniusVersion &+= 1
     }
 
     private func notifyStateChange() {

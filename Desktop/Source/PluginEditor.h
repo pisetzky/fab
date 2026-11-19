@@ -22,6 +22,7 @@ public:
     int lowest = 48, octaves = 3;
     std::map<int, cp::Highlight> highlights;
     std::set<int> held, pattern, melody;
+    std::map<int, juce::String> geniusNext;   // note → chord name (Pianist mode suggestions)
     bool italian = true, showScale = true, flats = false;
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
@@ -119,13 +120,14 @@ private:
     std::optional<cp::Chord> lastCommitted;
     juce::uint32 heldChangedAt = 0;
     int tick = 0;
+    int lastGeniusVersion = -1;
 
     juce::ComboBox genreBox, pianoBox, keyBox, complexityBox, progressionBox, arpBox, melodyBox;
     juce::ToggleButton minorToggle { "Minore" }, synthToggle { "Piano interno" }, syncToggle { "Sync DAW" }, italianToggle { "Do Re Mi" };
     juce::TextButton playButton { "Genre Player" }, newSongButton { "Nuova canzone" }, geniusButton { "Modalita Genio" }, octDown { "<" }, octUp { ">" };
     juce::TextButton proButton { "Pro" }, inspireButton { "Ispirazione" };
-    juce::ToggleButton drumsToggle { "Batteria" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> drumsA;
+    juce::ToggleButton drumsToggle { "Batteria" }, handsToggle { "Due mani" }, notesToggle { "Solo note" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> drumsA, handsA, notesA;
     MidiDragButton midiButton { proc };
     juce::Slider bpmSlider;
     std::array<SuggestionCard, 6> cards;

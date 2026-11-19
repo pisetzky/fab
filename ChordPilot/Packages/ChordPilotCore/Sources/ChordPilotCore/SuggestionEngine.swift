@@ -316,6 +316,89 @@ public final class SuggestionEngine {
         return Array(Set(notes.filter { $0 >= 21 && $0 <= 108 })).sorted()
     }
 
+    // MARK: Pianist mode & two hands
+
+    public private(set) var geniusMelody: [Int] = []
+    public func geniusPlayed(_ note: Int) { geniusMelody.append(note); if geniusMelody.count > 8 { geniusMelody.removeFirst() } }
+
+    /// Suggested next melody notes in Genius mode, each with the chord it will produce (hit-melody rules:
+    /// short steps, a leap answered by a step back, sequences, phrase endings that resolve home).
+    public func geniusNext() -> [(note: Int, chord: Chord)] {
+        let key = currentKey
+        let scale = key.scale(genre.scale(for: key))
+        let mel = geniusMelody
+        let prev = mel.last ?? genre.octave + 7
+        let ctx = suggest(held: [])
+        let last = history.last
+        var out: [(note: Int, chord: Chord, score: Double)] = []
+        for n in (prev - 7)...(prev + 7) where n != prev && scale.contains(mod12(n)) {
+            let pc = mod12(n)
+            guard let idx = ctx.chords.firstIndex(where: { $0.chord.pitchClasses.contains(pc) && !(last.map { l in $0.chord.isLooselyEqual(l) } ?? false) }) else { continue }
+            var c = ctx.chords[idx].chord
+            let d = abs(n - prev)
+            var score = 10 - 1.5 * Double(idx)
+            score += d <= 2 ? 3 : d <= 4 ? 2 : d == 5 ? 1 : d == 7 ? 0.5 : -1
+            let rel = mod12(pc - c.root)
+            if rel == 0 { score += 1 } else if rel == 3 || rel == 4 { score += 1.5 }
+            if mel.count >= 2 {
+                let lastIv = prev - mel[mel.count - 2]
+                if abs(lastIv) > 4 && (n - prev).signum() == -lastIv.signum() && d <= 2 { score += 2 }
+                if mel.count >= 3 && n - prev == mel[mel.count - 2] - mel[mel.count - 3] { score += 2 }
+            }
+            if mel.count % 4 == 3 && pc == key.tonic { score += 2.5 }
+            if n > prev && mel.count % 4 == 1 { score += 0.5 }
+            if Self.richGenres.contains(genre.id) && complexity != .simple { c = Chord(root: c.root, quality: Self.enrich(c.quality)) }
+            out.append((n, c, score))
+        }
+        out.sort { $0.score > $1.score }
+        var best: [(note: Int, chord: Chord)] = []
+        for o in out where !best.contains(where: { $0.chord.root == o.chord.root && $0.chord.quality == o.chord.quality }) {
+            best.append((o.note, o.chord)); if best.count == 3 { break }
+        }
+        return best
+    }
+
+    /// Two hands – left hand: the progression chord built on the pressed note.
+    public func geniusLeft(_ note: Int) -> Chord {
+        let key = currentKey
+        let scale = key.scale(genre.scale(for: key))
+        var m = note
+        for d in [0, -1, 1, -2, 2] where scale.contains(mod12(note + d)) { m = note + d; break }
+        let pc = mod12(m)
+        let ctx = suggest(held: [])
+        let last = history.last
+        func fresh(_ s: ChordSuggestion) -> Bool { !(last.map { s.chord.isLooselyEqual($0) } ?? false) }
+        var ch = ctx.chords.first(where: { fresh($0) && $0.chord.root == pc })?.chord
+            ?? ctx.chords.first(where: { fresh($0) && $0.chord.pitchClasses.contains(pc) })?.chord
+            ?? diatonicChords(key: key, scale: genre.scale(for: key)).first(where: { $0.root == pc })
+            ?? Chord(root: pc, quality: key.isMinor ? .minor : .major)
+        if Self.richGenres.contains(genre.id) && complexity != .simple { ch = Chord(root: ch.root, quality: Self.enrich(ch.quality)) }
+        return ch
+    }
+
+    /// Left hand like a pianist: root at the pressed key's position + 3rd and 7th (or 3rd and 5th), within an octave, below `split`.
+    public static func leftHandVoicing(_ c: Chord, pressed: Int, split: Int) -> [Int] {
+        let iv = c.quality.intervals.map { $0 % 12 }
+        var r = pressed + 2
+        while mod12(r) != c.root { r -= 1 }
+        while r + 11 >= split && r - 12 >= 28 { r -= 12 }
+        let third = iv[1]
+        let upper2 = iv.count > 3 && iv[3] > third ? iv[3] : iv[2]
+        return [r, r + third, r + upper2].filter { $0 < split && $0 >= 24 }
+    }
+
+    /// Right hand: melody on top + up to two chord tones under it (3rd/7th first), within an octave, never below `split`.
+    public static func rightHandVoicing(_ c: Chord, melody: Int, split: Int) -> [Int] {
+        func rank(_ t: Int) -> Int {
+            let r = mod12(t - c.root)
+            return [3, 4, 10, 11].contains(r) ? 0 : [6, 7, 8].contains(r) ? 1 : r == 0 ? 3 : 2
+        }
+        let tones = Array(c.pitchClasses).filter { $0 != mod12(melody) }.sorted { rank($0) != rank($1) ? rank($0) < rank($1) : $0 < $1 }
+        var out = [melody]
+        for pc in tones.prefix(2) { var n = melody - 1; while mod12(n) != pc { n -= 1 }; if n >= melody - 11 && n >= split { out.append(n) } }
+        return out.sorted()
+    }
+
     static let richGenres: Set<String> = ["jazz", "rnb", "gospel", "lofi", "latin", "house", "melodictechno", "afrohouse", "cinematic"]
 
     /// Pianist voicing: right hand = up to 3 chord tones just below the melody (3rd/7th first, then 5th, 9th, root);

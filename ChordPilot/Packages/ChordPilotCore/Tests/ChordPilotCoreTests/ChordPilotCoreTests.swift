@@ -189,6 +189,24 @@ final class ChordPilotCoreTests: XCTestCase {
         XCTAssertEqual(sigs.count, 10)
     }
 
+    func testPianistAndTwoHands() {
+        let e = SuggestionEngine(genre: Genre.byID("pop"))
+        e.fixedKey = Key(tonic: 0, isMinor: false)
+        for n in [61, 66, 63, 70] {
+            let g = e.genius(note: n); e.commit(chord: g.chord); e.geniusPlayed(g.note)
+            let next = e.geniusNext()
+            XCTAssertFalse(next.isEmpty)
+            XCTAssertTrue(next.allSatisfy { $0.chord.pitchClasses.contains(mod12($0.note)) })
+        }
+        for n in [48, 55, 53, 57] {
+            let c = e.geniusLeft(n); e.commit(chord: c)
+            let lh = SuggestionEngine.leftHandVoicing(c, pressed: n, split: 60)
+            let rh = SuggestionEngine.rightHandVoicing(c, melody: 64, split: 60)
+            XCTAssertTrue(lh.allSatisfy { $0 < 60 } && lh.last! - lh.first! <= 12)
+            XCTAssertTrue(rh.allSatisfy { $0 >= 60 } && rh.last! - rh.first! <= 12)
+        }
+    }
+
     func testVoicingIsSmooth() {
         let c = Chord(root: 0, quality: .major).voicing(near: 60, withBass: false)
         let f = Chord(root: 5, quality: .major).voicing(near: 60, previous: c, withBass: false)

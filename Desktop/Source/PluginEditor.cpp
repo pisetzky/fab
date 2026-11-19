@@ -94,6 +94,13 @@ void KeyboardView::paint(juce::Graphics& g) {
         }
         if (pattern.count(n)) { g.setColour(magenta); g.fillRoundedRectangle(r.getX() + 4, 5, r.getWidth() - 8, 6, 3); }
         if (melody.count(n)) { g.setColour(pink); g.fillRoundedRectangle(r.getX() + 4, 13, r.getWidth() - 8, 6, 3); }
+        if (auto gn = geniusNext.find(n); gn != geniusNext.end()) {
+            const juce::Colour gold(0xffffc233);
+            g.setColour(gold); g.drawRoundedRectangle(r.reduced(1.5f), 6.0f, 3.0f);
+            auto tag = juce::Rectangle<float>(r.getCentreX() - 22, black ? 14.0f : r.getBottom() - 64, 44, 16);
+            g.fillRoundedRectangle(tag, 5); g.setColour(juce::Colour(0xff3a2400));
+            g.setFont(juce::FontOptions(10.0f, juce::Font::bold)); g.drawText(gn->second, tag, juce::Justification::centred);
+        }
         if (held.count(n)) { g.setColour(teal); g.drawRoundedRectangle(r.reduced(1.5f), 6.0f, 3.0f); }
         bool primary = it != highlights.end() && it->second.role == 4;
         if (cp::mod12(n) == 0 || primary || held.count(n)) {
@@ -387,7 +394,7 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &genreBox, &pianoBox, &keyBox, &complexityBox, &progressionBox,
             &minorToggle, &synthToggle, &syncToggle, &italianToggle, &playButton, &bpmSlider, &octDown, &octUp, &keyboard,
-            &arpBox, &melodyBox, &newSongButton, &geniusButton, &proButton, &midiButton, &inspireButton, &drumsToggle })
+            &arpBox, &melodyBox, &newSongButton, &geniusButton, &proButton, &midiButton, &inspireButton, &drumsToggle, &handsToggle, &notesToggle })
         addAndMakeVisible(c);
     for (auto& c : cards) {
         addAndMakeVisible(c);
@@ -415,6 +422,8 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
     playA = std::make_unique<BA>(s, "play", playButton);
     geniusA = std::make_unique<BA>(s, "genius", geniusButton);
     drumsA = std::make_unique<BA>(s, "drums", drumsToggle);
+    handsA = std::make_unique<BA>(s, "hands", handsToggle);
+    notesA = std::make_unique<BA>(s, "notesonly", notesToggle);
     bpmA = std::make_unique<SA>(s, "bpm", bpmSlider);
     italianToggle.onClick = [this] { keyboard.italian = italianToggle.getToggleState(); recompute(); };
     octDown.onClick = [this] { keyboard.lowest = std::max(24, keyboard.lowest - 12); recompute(); };
@@ -488,6 +497,14 @@ void ChordPilotEditor::timerCallback() {
         if (proc.melodyNotes[(size_t) n] > 0) mel.insert(n);
     }
     if (mel != melody) { melody = mel; keyboard.melody = mel; keyboard.repaint(); }
+    // Pianist mode: gold keys = suggested next notes, labelled with the chord they will produce.
+    const bool geniusOn = proc.params.getRawParameterValue("genius")->load() > 0.5f;
+    if (geniusOn && (proc.geniusVersion.load() != lastGeniusVersion || keyboard.geniusNext.empty())) {
+        lastGeniusVersion = proc.geniusVersion.load();
+        keyboard.geniusNext.clear();
+        for (auto& s : proc.geniusSuggestions()) keyboard.geniusNext[s.note] = chordName(s.chord);
+        keyboard.repaint();
+    } else if (!geniusOn && !keyboard.geniusNext.empty()) { keyboard.geniusNext.clear(); keyboard.repaint(); }
     bool changed = false;
     if (h != held) { held = h; heldChangedAt = juce::Time::getMillisecondCounter(); changed = true; }
     else if (heldChangedAt && juce::Time::getMillisecondCounter() - heldChangedAt > 250) {
@@ -579,6 +596,8 @@ void ChordPilotEditor::resized() {
     syncToggle.setBounds(second.removeFromLeft(100));
     italianToggle.setBounds(second.removeFromLeft(100));
     drumsToggle.setBounds(second.removeFromLeft(100));
+    handsToggle.setBounds(second.removeFromLeft(110));
+    notesToggle.setBounds(second.removeFromLeft(110));
     r.removeFromTop(8);
     auto third = r.removeFromTop(30);
     arpBox.setBounds(third.removeFromLeft(200)); third.removeFromLeft(8);
