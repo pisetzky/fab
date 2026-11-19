@@ -117,7 +117,11 @@ void ChordPilotProcessor::timerCallback() {
         int s1, n1, s2, n2; int ready = geniusFifo.getNumReady();
         geniusFifo.prepareToRead(ready, s1, n1, s2, n2);
         auto consume = [this](int v) {
-            if (v & 0x10000) { geniusEngine.noteOn(v & 0x7f, 100); geniusEngine.geniusPlayed(v & 0x7f); }
+            if (v & 0x10000) {
+                const int note = v & 0x7f, pressed = (v >> 8) & 0x7f;
+                geniusEngine.noteOn(note, 100); geniusEngine.geniusPlayed(note);
+                geniusEngine.melodicCommit(pressed, note, juce::Time::getMillisecondCounterHiRes());
+            }
             else if (v & 0x20000) geniusEngine.commit(cp::makeChord((v >> 8) & 0xff, v & 0xff));
         };
         for (int i = 0; i < n1; ++i) consume(geniusFifoData[(size_t) (s1 + i)]);
@@ -150,10 +154,11 @@ void ChordPilotProcessor::rebuildGeniusTable() {
     bool minor = params.getRawParameterValue("minor")->load() > 0.5f;
     geniusEngine.fixedKey = k == 0 ? std::nullopt : std::optional<cp::Key>(cp::Key { k - 1, minor });
     auto table = std::make_shared<GeniusTable>();
-    for (int pc = 0; pc < 12; ++pc) {
-        auto g = geniusEngine.genius(60 + pc);
-        auto& e = (*table)[(size_t) pc];
-        e.shift = g.shift; e.root = g.chord.root; e.quality = g.chord.quality; e.numTones = 0;
+    for (int p = 0; p < 128; ++p) {
+        // Preview (no commit): the most musical next note and its chord if this key is pressed now.
+        auto g = geniusEngine.genius(juce::jlimit(21, 108, p), -1, false);
+        auto& e = (*table)[(size_t) p];
+        e.note = (p < 21 || p > 108) ? p : g.note; e.root = g.chord.root; e.quality = g.chord.quality; e.numTones = 0;
         for (int iv : cp::qualities()[(size_t) g.chord.quality].iv) {
             int t = cp::mod12(g.chord.root + iv); bool dup = false;
             for (int j = 0; j < e.numTones; ++j) dup |= e.tones[j] == t;
@@ -294,8 +299,8 @@ void ChordPilotProcessor::handleInput(const juce::MidiMessage& m, int offset, ju
     }
     auto table = std::atomic_load(&geniusTable);
     if (!table) { handleMidi(m, offset, out, false); return; }
-    const auto& e = (*table)[(size_t) cp::mod12(pressed)];
-    const int n = juce::jlimit(0, 127, pressed + e.shift);
+    const auto& e = (*table)[(size_t) pressed];
+    const int n = juce::jlimit(0, 127, e.note);
     const long long now = sampleClock + offset;
     bool fits = false; for (int i = 0; i < geniusNumTones; ++i) fits |= geniusTones[i] == cp::mod12(n);
     const bool notesOnly = params.getRawParameterValue("notesonly")->load() > 0.5f;
@@ -329,7 +334,7 @@ void ChordPilotProcessor::handleInput(const juce::MidiMessage& m, int offset, ju
         if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x20000 | (e.root << 8) | e.quality; geniusFifo.finishedWrite(1); }
     }
     { int s1, n1, s2, n2; geniusFifo.prepareToWrite(1, s1, n1, s2, n2);
-      if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x10000 | n; geniusFifo.finishedWrite(1); } }
+      if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x10000 | n | (pressed << 8); geniusFifo.finishedWrite(1); } }
     pressedToSounding[(size_t) raw] = n;
     lastNoteAt = now;
     if (held[(size_t) n] > 0) handleMidi(juce::MidiMessage::noteOff(m.getChannel(), n), offset, out, false);
@@ -412,7 +417,7 @@ bool ChordPilotProcessor::handleTwoHands(const juce::MidiMessage& m, int raw, in
             if (!found) { mel = pressed + e.lockShift; if (mel < split) mel = pressed; }
             cnt = cp::rightHandVoicing(handTones, handNumTones, handRoot, mel, split, notes);
             int s1, n1, s2, n2; geniusFifo.prepareToWrite(1, s1, n1, s2, n2);
-            if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x10000 | mel; geniusFifo.finishedWrite(1); }
+            if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x10000 | mel | (pressed << 8); geniusFifo.finishedWrite(1); }
         } else if (genius) {
             return false;    // right hand alone: full Genius mode
         } else {

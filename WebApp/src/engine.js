@@ -339,17 +339,80 @@ const CP = (() => {
     }
     /// Genius mode: turns any key into the closest note that fits the song and picks the next chord
     /// that harmonises it while continuing the progression. Returns { note, chord, shift }.
-    genius(note) {
+    /// Melodic brain of Genius mode. The pressed key is read as an *intention* (up / down / same, small or
+    /// big move) and turned into the most musical next note: short steps, leaps answered by a step back,
+    /// singing range, leading tone resolving home, notes that leave good continuations, and hit-song form –
+    /// 8-note phrases where notes 5-8 answer the motif of notes 1-4 and the phrase ends at home.
+    /// A pause longer than 1.8 s starts a new phrase. `commit` = false only previews (real-time tables).
+    melodicNote(pressed, now = null, commit = true) {
       const k = this.currentKey, scale = scaleSet(k, scaleFor(this.genre, k));
+      const st = this.melState || (this.melState = { phrase: [], count: 0, pressed: null, last: -1e9 });
+      let phrase = st.phrase, count = st.count;
+      if (now !== null && now - st.last > 1800) { phrase = []; count = 0; }
+      if (count % 8 === 0) phrase = [];
+      const idx = count % 8;
       const ctx = this.suggest([]);
-      const best = ctx.chords[0] ? pcs(ctx.chords[0].chord) : new Set();
-      let m = note;
-      for (const d of [0, -1, 1, -2, 2]) {
-        const c = note + d;
-        if (!scale.has(mod12(c))) continue;
-        const twin = note - d;   // same distance on the other side
-        if (d !== 0 && scale.has(mod12(twin)) && best.has(mod12(twin)) && !best.has(mod12(c))) { m = twin; break; }
-        m = c; break;
+      const nextChord = ctx.chords[0] ? pcs(ctx.chords[0].chord) : new Set([k.tonic]);
+      const tonicChord = pcs(chord(k.tonic, k.minor ? "minor" : "major"));
+      const center = this.genre.octave + 10;
+      const prev = phrase.length ? phrase[phrase.length - 1] : (st.prevNote ?? null);
+      let best = pressed, bs = -1e9;
+      if (prev === null) {
+        // phrase opening: a tone of the home chord near the pressed key, in the singing range
+        for (let c = pressed - 7; c <= pressed + 7; c++) {
+          if (!tonicChord.has(mod12(c))) continue;
+          const sc = -Math.abs(c - pressed) - 1.2 * Math.max(0, Math.abs(c - center) - 4) + (mod12(c) === k.tonic ? 0.5 : 0);
+          if (sc > bs) { bs = sc; best = c; }
+        }
+      } else {
+        const gest = st.pressed === null ? 0 : pressed - st.pressed;
+        const dir = Math.sign(gest), size = Math.abs(gest);
+        const want = size === 0 ? 0 : size <= 3 ? 1.5 : size <= 7 ? 3 : 4.5;
+        const lastIv = phrase.length >= 2 ? prev - phrase[phrase.length - 2] : 0;
+        // answer phrase: notes 5-8 repeat the motif of notes 1-4 (same intervals)
+        let target = null;
+        if (idx === 4 && phrase.length >= 1) target = phrase[0];
+        else if (idx > 4 && phrase.length >= idx) target = prev + (phrase[idx - 4] - phrase[idx - 5]);
+        for (let c = prev - 9; c <= prev + 9; c++) {
+          if (!scale.has(mod12(c))) continue;
+          const iv = c - prev, a = Math.abs(iv);
+          let sc = 0;
+          const intent = idx === 7 ? 0.35 : 1;   // at the end of a phrase, going home matters more than the gesture
+          if (dir !== 0) { sc += intent * (Math.sign(iv) === dir ? 2 : iv === 0 ? -1 : -3); sc -= intent * 0.5 * Math.abs(a - want); }
+          else sc += iv === 0 ? 1 : -0.4 * a;
+          sc += a <= 2 ? 2.5 : a <= 4 ? 1 : a <= 7 ? -0.8 : -3;
+          if (Math.abs(lastIv) > 4) { if (Math.sign(iv) === -Math.sign(lastIv) && a <= 2) sc += 2; else if (Math.sign(iv) === Math.sign(lastIv) && a > 2) sc -= 2; }
+          if (target !== null) sc += c === target ? 3 : -0.6 * Math.abs(c - target);
+          if (nextChord.has(mod12(c))) sc += 1.5;
+          if (idx === 7) sc += mod12(c) === k.tonic ? 8 : tonicChord.has(mod12(c)) ? 2 : 0;          // phrase ends at home
+          if (idx === 6 && Math.abs(c - (c - mod12(c - k.tonic) + (mod12(c - k.tonic) > 6 ? 12 : 0))) <= 2) sc += 1.5; // approach home
+          if (mod12(prev - k.tonic) === 11 && mod12(c - k.tonic) === 0 && iv > 0) sc += 3;   // leading tone → home
+          sc -= Math.max(0, Math.abs(c - center) - 7) * 1.0;                                 // singing range
+          if (phrase.length >= 2 && c === prev && prev === phrase[phrase.length - 2]) sc -= 3; // no triple repeats
+          let options = 0;                                                                     // look ahead
+          for (let d = -4; d <= 4; d++) if (d && scale.has(mod12(c + d)) && ctx.chords.slice(0, 4).some(x => pcs(x.chord).has(mod12(c + d)))) options++;
+          sc += 0.2 * options;
+          sc -= 0.08 * Math.abs(c - pressed);
+          if (sc > bs) { bs = sc; best = c; }
+        }
+      }
+      if (commit) {
+        phrase.push(best);
+        Object.assign(st, { phrase, count: count + 1, pressed, prevNote: best, last: now ?? st.last });
+      }
+      return best;
+    }
+
+    genius(note, now = null, commit = true) {
+      const k = this.currentKey;
+      const ctx = this.suggest([]);
+      const m = this.melodicNote(note, now, commit);
+      // Cadence: when the melody closes a phrase on the tonic, harmonise it with the home chord.
+      if (commit && this.melState.count % 8 === 0 && mod12(m) === k.tonic) {
+        const last = this.history[this.history.length - 1];
+        let home = chord(k.tonic, k.minor ? "minor" : "major");
+        if (RICH_GENRES.has(this.genre.id) && this.complexity >= 1) home = adjust(home, 2);
+        if (!(last && loose(home, last))) return { note: m, chord: home, shift: m - note };
       }
       const pc = mod12(m);
       // Every note gets its own chord: the best next chord of the progression that contains the note,
@@ -391,7 +454,7 @@ const CP = (() => {
     geniusNext() {
       const k = this.currentKey, scale = scaleSet(k, scaleFor(this.genre, k));
       const mel = this.geniusMelody || [];
-      const prev = mel.length ? mel[mel.length - 1] : this.genre.octave + 7;
+      const prev = this.melState && this.melState.prevNote !== undefined ? this.melState.prevNote : mel.length ? mel[mel.length - 1] : this.genre.octave + 7;
       const ctx = this.suggest([]);
       const last = this.history[this.history.length - 1];
       const out = [];
@@ -421,7 +484,7 @@ const CP = (() => {
     }
 
     /// Table for the 12 pitch classes (used by the real-time engines, recomputed as the song moves on).
-    geniusTable() { return [...Array(12)].map((_, pc) => this.genius(60 + pc)); }
+    geniusTable() { return [...Array(12)].map((_, pc) => this.genius(60 + pc, null, false)); }
 
     melodyHints(held, k, scale, next) {
       if (!held.length) return [];

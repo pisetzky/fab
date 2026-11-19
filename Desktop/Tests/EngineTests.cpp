@@ -87,5 +87,22 @@ int main() {
           int rh[4]; int nr = rightHandVoicing(tones.data(), (int) tones.size(), c.root, 64, 60, rh);
           assert(rh[nr - 1] - rh[0] <= 12); for (int i = 0; i < nr; ++i) assert(rh[i] >= 60);
       } }
+    // Melodic brain: random presses → continuous, singable melody
+    for (const char* id : { "pop", "jazz", "trap" }) {
+        const Genre* g = nullptr; for (auto& x : genres()) if (x.id == id) g = &x;
+        Engine e; e.genre = g; e.fixedKey = g->defaultKey();
+        unsigned seed = 7; double t = 0; int last = -1, steps = 0, big = 0, n = 0, homes = 0, phrases = 0;
+        for (int i = 0; i < 400; ++i) {
+            seed = seed * 1103515245u + 12345u; int pressed = 48 + (int) ((seed >> 8) % 36);
+            seed = seed * 1103515245u + 12345u; t += 150 + (seed >> 8) % 600;
+            auto r = e.genius(pressed, t); e.noteOn(r.note); e.commit(r.chord); e.geniusPlayed(r.note);
+            assert(r.chord.pcs().count(mod12(r.note)));
+            if (last >= 0) { ++n; int a = std::abs(r.note - last); if (a <= 2) ++steps; if (a > 9) ++big; }
+            if (i % 8 == 7) { ++phrases; if (mod12(r.note) == g->defaultKey().tonic) ++homes; }
+            last = r.note;
+        }
+        std::cout << id << ": passi " << (100 * steps / n) << "% frasi a casa " << (100 * homes / phrases) << "%\n";
+        assert(big == 0 && steps * 100 / n >= 60);
+    }
     std::cout << "ALL OK\n";
 }

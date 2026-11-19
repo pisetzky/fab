@@ -67,8 +67,9 @@ public:
     void playCustom(std::shared_ptr<const cp::Pattern> p);
 
     /// Genius mode lookup for one pitch class (built on the message thread, read by the audio thread).
-    struct GeniusEntry { int shift = 0; int root = 0; int quality = 0; int tones[6] {}; int numTones = 0; };
-    using GeniusTable = std::array<GeniusEntry, 12>;
+    /// Genius mode lookup for every key (built on the message thread from the melodic memory, read by the audio thread).
+    struct GeniusEntry { int note = 0; int root = 0; int quality = 0; int tones[6] {}; int numTones = 0; };
+    using GeniusTable = std::array<GeniusEntry, 128>;
 
 private:
     void timerCallback() override;

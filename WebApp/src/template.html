@@ -540,7 +540,7 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     } else {
       const leftActive = [...handsHeld.keys()].some(k => zoneOf(k + state.transpose) === "left") || now - handChordAt < 2500;
       if (state.genius && handChord && leftActive) {
-        const m = engine.melodyOver(pressed, handChord, state.splitNote);
+        const m = engine.melodyOver(Math.max(state.splitNote, engine.melodicNote(pressed, performance.now())), handChord, state.splitNote);
         notes = state.playMode === "notes" ? [m] : CP.rightHandVoicing(handChord, m, state.splitNote);
         engine.geniusPlayed(m); geniusNextNotes = engine.geniusNext();
       } else if (state.genius) {
@@ -578,7 +578,7 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     let n = state.scaleLock && !state.genius ? CP.lockToScale(engine, pressed) : pressed;
     if (n !== rawPressed) pressedToSounding.set(rawPressed, n);
     if (state.genius) {
-      const g = engine.genius(pressed);
+      const g = engine.genius(pressed, performance.now());
       n = g.note;
       const now = performance.now();
       clearTimeout(geniusRelease);

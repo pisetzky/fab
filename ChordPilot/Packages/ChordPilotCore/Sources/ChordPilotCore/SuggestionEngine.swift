@@ -245,18 +245,92 @@ public final class SuggestionEngine {
 
     /// Genius mode: turns any key into the closest note that fits the song and picks the next chord
     /// that harmonises it while continuing the progression.
-    public func genius(note: Int) -> (note: Int, chord: Chord, shift: Int) {
+    // MARK: Melodic brain (same rules as the web and desktop engines)
+
+    struct MelState { var phrase: [Int] = []; var count = 0; var pressed: Int? = nil; var prevNote: Int? = nil; var last: Double = -1e12 }
+    var mel = MelState()
+
+    /// Reads the pressed key as an intention (up / down / same, small or big) and returns the most musical next note:
+    /// short steps, leaps answered by a step back, singing range, leading tone → home, notes with good continuations,
+    /// 8-note phrases whose second half answers the motif and ends at home. A pause > 1.8 s starts a new phrase.
+    public func melodicNote(_ pressed: Int, now: Double? = nil, commit: Bool = true) -> Int {
         let key = currentKey
         let scale = key.scale(genre.scale(for: key))
+        var phrase = mel.phrase, count = mel.count
+        if let t = now, t - mel.last > 1800 { phrase = []; count = 0 }
+        if count % 8 == 0 { phrase = [] }
+        let idx = count % 8
         let ctx = suggest(held: [])
-        let best = ctx.chords.first?.chord.pitchClasses ?? []
-        var m = note
-        for d in [0, -1, 1, -2, 2] {
-            let c = note + d
-            guard scale.contains(mod12(c)) else { continue }
-            let twin = note - d
-            if d != 0 && scale.contains(mod12(twin)) && best.contains(mod12(twin)) && !best.contains(mod12(c)) { m = twin; break }
-            m = c; break
+        let nextChord = ctx.chords.first?.chord.pitchClasses ?? [key.tonic]
+        let tonicChord = Chord(root: key.tonic, quality: key.isMinor ? .minor : .major).pitchClasses
+        let center = genre.octave + 10
+        let prev = phrase.last ?? mel.prevNote
+        var best = pressed, bs = -1e9
+        if let prev = prev {
+            let gest = mel.pressed.map { pressed - $0 } ?? 0
+            let dir = gest.signum(), size = abs(gest)
+            let want: Double = size == 0 ? 0 : size <= 3 ? 1.5 : size <= 7 ? 3 : 4.5
+            let lastIv = phrase.count >= 2 ? prev - phrase[phrase.count - 2] : 0
+            var target: Int? = nil
+            if idx == 4, let first = phrase.first { target = first }
+            else if idx > 4 && phrase.count >= idx { target = prev + (phrase[idx - 4] - phrase[idx - 5]) }
+            for c in (prev - 9)...(prev + 9) where scale.contains(mod12(c)) {
+                let iv = c - prev, a = abs(iv)
+                var sc = 0.0
+                let intent = idx == 7 ? 0.35 : 1.0
+                if dir != 0 { sc += intent * (iv.signum() == dir ? 2 : iv == 0 ? -1 : -3); sc -= intent * 0.5 * abs(Double(a) - want) }
+                else { sc += iv == 0 ? 1 : -0.4 * Double(a) }
+                sc += a <= 2 ? 2.5 : a <= 4 ? 1 : a <= 7 ? -0.8 : -3
+                if abs(lastIv) > 4 {
+                    if iv.signum() == -lastIv.signum() && a <= 2 { sc += 2 } else if iv.signum() == lastIv.signum() && a > 2 { sc -= 2 }
+                }
+                if let tg = target { sc += c == tg ? 3 : -0.6 * Double(abs(c - tg)) }
+                if nextChord.contains(mod12(c)) { sc += 1.5 }
+                if idx == 7 { sc += mod12(c) == key.tonic ? 8 : tonicChord.contains(mod12(c)) ? 2 : 0 }
+                if idx == 6 { let r = mod12(c - key.tonic); if min(r, 12 - r) <= 2 { sc += 1.5 } }
+                if mod12(prev - key.tonic) == 11 && mod12(c - key.tonic) == 0 && iv > 0 { sc += 3 }
+                sc -= Double(max(0, abs(c - center) - 7))
+                if phrase.count >= 2 && c == prev && prev == phrase[phrase.count - 2] { sc -= 3 }
+                var options = 0
+                for d in -4...4 where d != 0 && scale.contains(mod12(c + d)) {
+                    if ctx.chords.prefix(4).contains(where: { $0.chord.pitchClasses.contains(mod12(c + d)) }) { options += 1 }
+                }
+                sc += 0.2 * Double(options)
+                sc -= 0.08 * Double(abs(c - pressed))
+                if sc > bs { bs = sc; best = c }
+            }
+        } else {
+            for c in (pressed - 7)...(pressed + 7) where tonicChord.contains(mod12(c)) {
+                let sc = -Double(abs(c - pressed)) - 1.2 * Double(max(0, abs(c - center) - 4)) + (mod12(c) == key.tonic ? 0.5 : 0)
+                if sc > bs { bs = sc; best = c }
+            }
+        }
+        if commit {
+            phrase.append(best)
+            mel.phrase = phrase; mel.count = count + 1; mel.pressed = pressed; mel.prevNote = best
+            if let t = now { mel.last = t }
+        }
+        return best
+    }
+
+    /// Records a note chosen by the real-time engine into the melodic memory.
+    public func melodicCommit(pressed: Int, note: Int, now: Double? = nil) {
+        if let t = now, t - mel.last > 1800 { mel.phrase = []; mel.count = 0 }
+        if mel.count % 8 == 0 { mel.phrase = [] }
+        mel.phrase.append(note); mel.count += 1; mel.pressed = pressed; mel.prevNote = note
+        if let t = now { mel.last = t }
+    }
+
+    public func genius(note: Int, now: Double? = nil, commit: Bool = true) -> (note: Int, chord: Chord, shift: Int) {
+        let key = currentKey
+        let ctx = suggest(held: [])
+        let m = melodicNote(note, now: now, commit: commit)
+        // Cadence: a phrase that closes on the tonic is harmonised with the home chord.
+        let closing = (commit ? mel.count : mel.count + 1) % 8 == 0
+        if closing && mod12(m) == key.tonic {
+            var home = Chord(root: key.tonic, quality: key.isMinor ? .minor : .major)
+            if Self.richGenres.contains(genre.id) && complexity != .simple { home = Chord(root: home.root, quality: Self.enrich(home.quality)) }
+            if !(history.last.map { home.isLooselyEqual($0) } ?? false) { return (m, home, m - note) }
         }
         let pc = mod12(m)
         // Every note gets its own chord: the best next chord containing the note, never the chord just played.
@@ -327,7 +401,7 @@ public final class SuggestionEngine {
         let key = currentKey
         let scale = key.scale(genre.scale(for: key))
         let mel = geniusMelody
-        let prev = mel.last ?? genre.octave + 7
+        let prev = self.mel.prevNote ?? mel.last ?? genre.octave + 7
         let ctx = suggest(held: [])
         let last = history.last
         var out: [(note: Int, chord: Chord, score: Double)] = []

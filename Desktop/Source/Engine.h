@@ -81,7 +81,16 @@ public:
     Result suggest(const std::vector<int>& held);
     struct GeniusChoice { int note; Chord chord; int shift; };
     /// Genius mode: closest note that fits the song + the next chord that harmonises it.
-    GeniusChoice genius(int note);
+    /// `now` in ms (−1 = unknown), `commit` = false only previews (real-time tables).
+    GeniusChoice genius(int note, double now = -1, bool commit = true);
+    /// Melodic brain: reads the pressed key as an intention and returns the most musical next note
+    /// (steps, leap recovery, singing range, leading tone → home, look-ahead, 8-note phrases whose
+    /// second half answers the motif and ends at home).
+    int melodicNote(int pressed, double now = -1, bool commit = true);
+    /// Records a note chosen elsewhere (real-time path) into the melodic memory.
+    void melodicCommit(int pressed, int note, double now = -1);
+    struct MelState { std::vector<int> phrase; int count = 0; int pressed = -1000; int prevNote = -1000; double last = -1e12; };
+    MelState mel;
     /// Pianist mode: remember the melody played in Genius mode and suggest the next notes (each with its chord).
     void geniusPlayed(int note) { geniusMelody.push_back(note); if (geniusMelody.size() > 8) geniusMelody.erase(geniusMelody.begin()); }
     struct GeniusNext { int note; Chord chord; double score; };

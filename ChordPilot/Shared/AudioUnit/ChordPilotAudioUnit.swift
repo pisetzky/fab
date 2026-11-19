@@ -300,7 +300,11 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         var msg: UInt32 = 0, changed = false
         while cp_ring_pop(kernel.geniusRing, &msg) {
             changed = true
-            if msg & 0x10000 != 0 { geniusEngine.registerNoteOn(Int(msg & 0x7F)); geniusEngine.geniusPlayed(Int(msg & 0x7F)) }
+            if msg & 0x10000 != 0 {
+                let note = Int(msg & 0x7F), pressed = Int((msg >> 8) & 0x7F)
+                geniusEngine.registerNoteOn(note); geniusEngine.geniusPlayed(note)
+                geniusEngine.melodicCommit(pressed: pressed, note: note, now: Date().timeIntervalSince1970 * 1000)
+            }
             else if msg & 0x20000 != 0 {
                 let q = ChordQuality.allCases[min(ChordQuality.allCases.count - 1, Int(msg & 0xFF))]
                 geniusEngine.commit(chord: Chord(root: Int((msg >> 8) & 0xFF), quality: q))
@@ -319,7 +323,7 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         geniusEngine.complexity = complexity
         geniusEngine.fixedKey = fixedKey ?? (genius ? nil : detectedKey)
         let entries: [(shift: Int, root: Int, quality: Int, tones: [Int])] = (0..<12).map { pc in
-            let g = geniusEngine.genius(note: 60 + pc)
+            let g = geniusEngine.genius(note: 60 + pc, now: nil, commit: false)
             var tones: [Int] = []
             for iv in g.chord.quality.intervals where !tones.contains(mod12(g.chord.root + iv)) { tones.append(mod12(g.chord.root + iv)) }
             return (g.shift, g.chord.root, ChordQuality.allCases.firstIndex(of: g.chord.quality) ?? 0, tones)
@@ -338,6 +342,16 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
             return (o.0, o.1, left.root, l.0, l.1, ChordQuality.allCases.firstIndex(of: left.quality) ?? 0)
         }
         kernel.publishGeniusTable(entries, oneFinger: of, lockShifts: locks, hands: hands)
+        if genius {
+            // Melodic brain: preview the best next note (and chord) for every key.
+            let melodic: [(note: Int, root: Int, quality: Int, tones: [Int])] = (0..<128).map { p in
+                let g = geniusEngine.genius(note: max(21, min(108, p)), now: nil, commit: false)
+                var tones: [Int] = []
+                for iv in g.chord.quality.intervals where !tones.contains(mod12(g.chord.root + iv)) { tones.append(mod12(g.chord.root + iv)) }
+                return (p < 21 || p > 108 ? p : g.note, g.chord.root, ChordQuality.allCases.firstIndex(of: g.chord.quality) ?? 0, tones)
+            }
+            kernel.publishMelodicTable(melodic)
+        }
         geniusVersion &+= 1
     }
 

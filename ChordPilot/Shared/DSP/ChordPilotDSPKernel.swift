@@ -63,6 +63,14 @@ final class ChordPilotDSPKernel {
     static let geniusStride = 23                 // genius 0-8 | one-finger 9-15 | lockShift 16 | two hands: 17 ofThird, 18 ofUpper, 19 leftRoot, 20 leftThird, 21 leftUpper, 22 leftQuality
     private let geniusTables: [UnsafeMutablePointer<Int32>] = (0..<3).map { _ in
         let p = UnsafeMutablePointer<Int32>.allocate(capacity: 12 * 23); p.initialize(repeating: 0, count: 276); return p }
+    // Melodic table: for every key (0-127) the most musical next note and its chord:
+    // [0] note, [1] root, [2] numTones, [3...7] tones, [8] quality. Rebuilt by the AU after each note.
+    static let melodicStride = 9
+    private let melodicTables: [UnsafeMutablePointer<Int32>] = (0..<3).map { _ in
+        let p = UnsafeMutablePointer<Int32>.allocate(capacity: 128 * 9); p.initialize(repeating: 0, count: 128 * 9); return p }
+    private let melodicPending = cp_atomic_create(-1)
+    private let melodicActive = cp_atomic_create(0)
+    private var melodicHasTable = false
     private let geniusPending = cp_atomic_create(-1)
     private let geniusActive = cp_atomic_create(0)
     private var geniusHasTable = false
@@ -234,6 +242,20 @@ final class ChordPilotDSPKernel {
         cp_atomic_store(geniusPending, target)
     }
 
+    func publishMelodicTable(_ entries: [(note: Int, root: Int, quality: Int, tones: [Int])]) {
+        let active = cp_atomic_load(melodicActive), pending = cp_atomic_load(melodicPending)
+        var target: Int32 = 0
+        while target == active || target == pending { target += 1 }
+        let t = melodicTables[Int(target)]
+        for (p, e) in entries.prefix(128).enumerated() {
+            let b = p * Self.melodicStride
+            let tones = e.tones.prefix(5)
+            t[b] = Int32(e.note); t[b + 1] = Int32(e.root); t[b + 2] = Int32(tones.count); t[b + 8] = Int32(e.quality)
+            for (i, x) in tones.enumerated() { t[b + 3 + i] = Int32(x) }
+        }
+        cp_atomic_store(melodicPending, target)
+    }
+
     func publishPattern(events: [(step: Int, note: UInt8, velocity: UInt8, lane: UInt8)], totalSteps: Int, stepsPerChord: Int) {
         let active = cp_atomic_load(patternActive)
         let pending = cp_atomic_load(patternPending)
@@ -325,6 +347,8 @@ final class ChordPilotDSPKernel {
 
         let gp = cp_atomic_exchange(geniusPending, -1)
         if gp >= 0 { cp_atomic_store(geniusActive, gp); geniusHasTable = true }
+        let mp = cp_atomic_exchange(melodicPending, -1)
+        if mp >= 0 { cp_atomic_store(melodicActive, mp); melodicHasTable = true }
 
         // 2. On-screen keyboard events (applied at the start of the buffer).
         var msg: UInt32 = 0
@@ -647,7 +671,7 @@ final class ChordPilotDSPKernel {
                     while x % 12 != pc { x -= 1 }
                     if x >= mel - 11 && x >= splitNote { notes[nn] = Int32(x); nn += 1 }
                 }
-                _ = cp_ring_push(geniusRing, 0x10000 | UInt32(mel))
+                _ = cp_ring_push(geniusRing, 0x10000 | UInt32(mel) | UInt32(pressed << 8))
             } else if geniusEnabled {
                 return false          // right hand alone: full Genius mode
             } else {
@@ -721,8 +745,10 @@ final class ChordPilotDSPKernel {
             geniusEnabled = true
             return true
         }
-        let t = geniusTables[Int(cp_atomic_load(geniusActive))] + (pressed % 12) * Self.geniusStride
-        let n = max(0, min(127, pressed + Int(t[0])))
+        // The melodic table (per key) when ready, else the per-pitch-class table.
+        let t = melodicHasTable ? melodicTables[Int(cp_atomic_load(melodicActive))] + pressed * Self.melodicStride
+                                : geniusTables[Int(cp_atomic_load(geniusActive))] + (pressed % 12) * Self.geniusStride
+        let n = melodicHasTable ? max(0, min(127, Int(t[0]))) : max(0, min(127, pressed + Int(t[0])))
         let now = sampleClock + Int64(offset)
         var fits = false
         for i in 0..<gNumTones where Int(gTones[i]) == n % 12 { fits = true }
@@ -789,7 +815,7 @@ final class ChordPilotDSPKernel {
             gChordOn = true; gChangedAt = now
             _ = cp_ring_push(geniusRing, 0x20000 | UInt32(root << 8) | UInt32(t[8]))
         }
-        _ = cp_ring_push(geniusRing, 0x10000 | UInt32(n))
+        _ = cp_ring_push(geniusRing, 0x10000 | UInt32(n) | UInt32(pressed << 8))
         pressedToSounding[pressed] = Int16(n)
         lastNoteAt = now
         geniusEnabled = false   // route the corrected note through the normal path

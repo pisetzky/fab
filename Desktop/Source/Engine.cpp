@@ -425,18 +425,86 @@ Result Engine::suggest(const std::vector<int>& heldIn) {
     return r;
 }
 
-Engine::GeniusChoice Engine::genius(int note) {
+int Engine::melodicNote(int pressed, double now, bool commit) {
     Key k = currentKey();
     auto scale = scaleSet(k, scaleFor(*genre, k));
+    std::vector<int> phrase = mel.phrase; int count = mel.count;
+    if (now >= 0 && now - mel.last > 1800) { phrase.clear(); count = 0; }
+    if (count % 8 == 0) phrase.clear();
+    const int idx = count % 8;
     Result ctx = suggest({});
-    std::set<int> best; if (!ctx.chords.empty()) best = ctx.chords[0].chord.pcs();
-    int m = note;
-    for (int d : { 0, -1, 1, -2, 2 }) {
-        int c = note + d;
-        if (!scale.count(mod12(c))) continue;
-        int twin = note - d;
-        if (d != 0 && scale.count(mod12(twin)) && best.count(mod12(twin)) && !best.count(mod12(c))) { m = twin; break; }
-        m = c; break;
+    std::set<int> nextChord; if (!ctx.chords.empty()) nextChord = ctx.chords[0].chord.pcs(); else nextChord = { k.tonic };
+    auto tonicChord = makeChord(k.tonic, qualityIndex(k.minor ? "minor" : "major")).pcs();
+    const int center = genre->octave + 10;
+    const int prev = !phrase.empty() ? phrase.back() : (mel.prevNote > -1000 ? mel.prevNote : -1000);
+    int best = pressed; double bs = -1e9;
+    if (prev == -1000) {
+        for (int c = pressed - 7; c <= pressed + 7; ++c) {
+            if (!tonicChord.count(mod12(c))) continue;
+            double sc = -std::abs(c - pressed) - 1.2 * std::max(0, std::abs(c - center) - 4) + (mod12(c) == k.tonic ? 0.5 : 0);
+            if (sc > bs) { bs = sc; best = c; }
+        }
+    } else {
+        const int gest = mel.pressed == -1000 ? 0 : pressed - mel.pressed;
+        const int dir = (gest > 0) - (gest < 0), size = std::abs(gest);
+        const double want = size == 0 ? 0 : size <= 3 ? 1.5 : size <= 7 ? 3 : 4.5;
+        const int lastIv = phrase.size() >= 2 ? prev - phrase[phrase.size() - 2] : 0;
+        int target = -1000;
+        if (idx == 4 && !phrase.empty()) target = phrase[0];
+        else if (idx > 4 && (int) phrase.size() >= idx) target = prev + (phrase[(size_t) idx - 4] - phrase[(size_t) idx - 5]);
+        auto sgn = [](int x) { return (x > 0) - (x < 0); };
+        for (int c = prev - 9; c <= prev + 9; ++c) {
+            if (!scale.count(mod12(c))) continue;
+            const int iv = c - prev, a = std::abs(iv);
+            double sc = 0;
+            const double intent = idx == 7 ? 0.35 : 1.0;
+            if (dir != 0) { sc += intent * (sgn(iv) == dir ? 2 : iv == 0 ? -1 : -3); sc -= intent * 0.5 * std::abs(a - want); }
+            else sc += iv == 0 ? 1 : -0.4 * a;
+            sc += a <= 2 ? 2.5 : a <= 4 ? 1 : a <= 7 ? -0.8 : -3;
+            if (std::abs(lastIv) > 4) { if (sgn(iv) == -sgn(lastIv) && a <= 2) sc += 2; else if (sgn(iv) == sgn(lastIv) && a > 2) sc -= 2; }
+            if (target != -1000) sc += c == target ? 3 : -0.6 * std::abs(c - target);
+            if (nextChord.count(mod12(c))) sc += 1.5;
+            if (idx == 7) sc += mod12(c) == k.tonic ? 8 : tonicChord.count(mod12(c)) ? 2 : 0;
+            if (idx == 6) { int r = mod12(c - k.tonic); if (std::min(r, 12 - r) <= 2) sc += 1.5; }
+            if (mod12(prev - k.tonic) == 11 && mod12(c - k.tonic) == 0 && iv > 0) sc += 3;
+            sc -= std::max(0, std::abs(c - center) - 7) * 1.0;
+            if (phrase.size() >= 2 && c == prev && prev == phrase[phrase.size() - 2]) sc -= 3;
+            int options = 0;
+            for (int d = -4; d <= 4; ++d) {
+                if (!d || !scale.count(mod12(c + d))) continue;
+                for (size_t i = 0; i < std::min<size_t>(4, ctx.chords.size()); ++i) if (ctx.chords[i].chord.pcs().count(mod12(c + d))) { ++options; break; }
+            }
+            sc += 0.2 * options;
+            sc -= 0.08 * std::abs(c - pressed);
+            if (sc > bs) { bs = sc; best = c; }
+        }
+    }
+    if (commit) {
+        phrase.push_back(best);
+        mel.phrase = phrase; mel.count = count + 1; mel.pressed = pressed; mel.prevNote = best;
+        if (now >= 0) mel.last = now;
+    }
+    return best;
+}
+
+void Engine::melodicCommit(int pressed, int note, double now) {
+    if (now >= 0 && now - mel.last > 1800) { mel.phrase.clear(); mel.count = 0; }
+    if (mel.count % 8 == 0) mel.phrase.clear();
+    mel.phrase.push_back(note); mel.count++; mel.pressed = pressed; mel.prevNote = note;
+    if (now >= 0) mel.last = now;
+}
+
+Engine::GeniusChoice Engine::genius(int note, double now, bool commit) {
+    Key k = currentKey();
+    Result ctx = suggest({});
+    const int m = melodicNote(note, now, commit);
+    static const std::set<std::string> richG = { "jazz", "rnb", "gospel", "lofi", "latin", "house", "melodictechno", "afrohouse", "cinematic" };
+    // Cadence: a phrase that closes on the tonic is harmonised with the home chord.
+    const bool closing = (commit ? mel.count : mel.count + 1) % 8 == 0;
+    if (closing && mod12(m) == k.tonic) {
+        Chord home = makeChord(k.tonic, qualityIndex(k.minor ? "minor" : "major"));
+        if (richG.count(genre->id) && complexity >= 1) home = adjust(home, 2);
+        if (history.empty() || !home.loose(history.back())) return { m, home, m - note };
     }
     int pc = mod12(m);
     // Every note gets its own chord: the best next chord containing the note, never the chord just played.
@@ -521,7 +589,7 @@ int rightHandVoicing(const int* tones, int numTones, int root, int melody, int s
 std::vector<Engine::GeniusNext> Engine::geniusNext() {
     Key k = currentKey();
     auto scale = scaleSet(k, scaleFor(*genre, k));
-    const int prev = geniusMelody.empty() ? genre->octave + 7 : geniusMelody.back();
+    const int prev = mel.prevNote > -1000 ? mel.prevNote : geniusMelody.empty() ? genre->octave + 7 : geniusMelody.back();
     Result ctx = suggest({});
     const Chord* last = history.empty() ? nullptr : &history.back();
     static const std::set<std::string> rich = { "jazz", "rnb", "gospel", "lofi", "latin", "house", "melodictechno", "afrohouse", "cinematic" };
