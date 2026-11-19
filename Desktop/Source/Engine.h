@@ -1,6 +1,7 @@
 // ChordPilot engine – C++ port of ChordPilotCore (Swift) / engine.js. No JUCE dependency.
 #pragma once
 #include <array>
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <set>
@@ -78,6 +79,9 @@ public:
     void commit(const Chord& c);
     void didPlay(const std::vector<int>& v, const Chord& c) { lastVoicing = v; commit(c); }
     Result suggest(const std::vector<int>& held);
+    struct GeniusChoice { int note; Chord chord; int shift; };
+    /// Genius mode: closest note that fits the song + the next chord that harmonises it.
+    GeniusChoice genius(int note);
 
 private:
     std::vector<Chord> history;
@@ -87,10 +91,31 @@ private:
 };
 
 Chord adjust(const Chord& c, int complexity);
+/// Chord tones voiced just below `melody` plus the root in the bass. Allocation-free (real-time safe).
+int geniusVoicing(const int* tones, int numTones, int root, int melody, int* out);
 Key progressionKey(const Genre& g, const Key& k);
 
-struct PatternEvent { int step; int note; int vel; };
+struct PatternEvent { int step; int note; int vel; int lane = 0; };   // lane 0 = chords/bass, 1 = melody
 struct Pattern { std::vector<PatternEvent> events; int total = 16; std::vector<Chord> chords; int stepsPerChord = 16; };
-Pattern buildPattern(const Genre& g, const Key& k, int progIndex, int complexity);
+
+struct Arpeggio { const char* name; const char* steps; };
+const std::vector<Arpeggio>& arpeggios();          // 30 arpeggio patterns
+const std::vector<std::string>& melodyNames();     // 30 melody names
+constexpr int kMelodyCount = 30;
+
+/// Deterministic generator shared by all ChordPilot engines (mulberry32).
+struct Rng {
+    uint32_t a;
+    explicit Rng(uint32_t seed) : a(seed) {}
+    int operator()(int n) {
+        a += 0x6D2B79F5u; uint32_t t = a;
+        t = (t ^ (t >> 15)) * (t | 1u);
+        t ^= t + (t ^ (t >> 7)) * (t | 61u);
+        return (int) (((t ^ (t >> 14))) % (uint32_t) n);
+    }
+};
+
+/// arp: -1 = genre rhythm, 0..29 = arpeggio; melody: -1 = none, 0..29; seed = song variation.
+Pattern buildPattern(const Genre& g, const Key& k, int progIndex, int complexity, int arp = -1, int melody = -1, int seed = 0);
 
 } // namespace cp

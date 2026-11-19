@@ -4,7 +4,7 @@ Versioni: **iPad** (app Standalone + plug-in AUv3, in questa cartella), **deskto
 per Mac, Windows e Linux (`../Desktop`, JUCE), **web** installabile su iPad dalla Home (`../WebApp`).
 
 Suona una nota o un accordo: i tasti degli accordi e delle note **successive** si illuminano,
-nello stile del genere scelto dal menu a tendina (20 generi).
+nello stile del genere scelto dal menu a tendina (23 generi).
 
 | Colore sui tasti | Significato |
 |---|---|
@@ -17,7 +17,7 @@ nello stile del genere scelto dal menu a tendina (20 generi).
 ## Funzioni
 - **Riconoscimento accordi** in tempo reale (triadi, settime, none, sus, power chord, rivolti).
 - **Tonalità automatica** (algoritmo Krumhansl-Schmuckler) oppure fissa.
-- **20 generi**: Pop, Rock, Hip-Hop, Trap, R&B, Jazz, Blues, EDM, House, Reggaeton, Latin/Bossa,
+- **23 generi**: Pop, Rock, Hip-Hop, Trap, R&B, Jazz, Blues, EDM, House, Techno, Melodic Techno, Melodic Afro House, Reggaeton, Latin/Bossa,
   Country, Funk, Gospel/Soul, Metal, Reggae, Classica, Lo-Fi, Afrobeats, Cinematic – ognuno con scale,
   progressioni tipiche, note caratteristiche e un ritmo proprio.
 - **Genre Player**: suona in loop una progressione tipica del genere (accordi + basso), sincronizzato alla DAW,

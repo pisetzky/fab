@@ -40,8 +40,12 @@ void AuroraLookAndFeel::drawComboBox(juce::Graphics& g, int w, int h, bool, int,
 
 void AuroraLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down) {
     auto r = b.getLocalBounds().toFloat().reduced(0.5f);
-    if (b.getToggleState()) {
+    if (b.getToggleState() && b.getProperties()["genius"]) {
+        g.setGradientFill(juce::ColourGradient(green, r.getTopLeft(), cyan, r.getBottomRight(), false));
+    } else if (b.getToggleState()) {
         g.setGradientFill(juce::ColourGradient(magenta, r.getTopLeft(), violet, r.getBottomRight(), false));
+    } else if (b.getProperties()["song"]) {
+        g.setGradientFill(juce::ColourGradient(pink.withAlpha(0.45f), r.getTopLeft(), violet.withAlpha(0.45f), r.getBottomRight(), false));
     } else if (b.getProperties()["primary"]) {
         g.setGradientFill(juce::ColourGradient(green, r.getTopLeft(), teal, r.getBottomRight(), false));
     } else g.setColour(panel.brighter(over ? 0.2f : 0.0f));
@@ -89,6 +93,7 @@ void KeyboardView::paint(juce::Graphics& g) {
             }
         }
         if (pattern.count(n)) { g.setColour(magenta); g.fillRoundedRectangle(r.getX() + 4, 5, r.getWidth() - 8, 6, 3); }
+        if (melody.count(n)) { g.setColour(pink); g.fillRoundedRectangle(r.getX() + 4, 13, r.getWidth() - 8, 6, 3); }
         if (held.count(n)) { g.setColour(teal); g.drawRoundedRectangle(r.reduced(1.5f), 6.0f, 3.0f); }
         bool primary = it != highlights.end() && it->second.role == 4;
         if (cp::mod12(n) == 0 || primary || held.count(n)) {
@@ -163,6 +168,16 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
     for (int i = 0; i < 12; ++i) kn.add(juce::String(cp::kItalian[i]) + " / " + cp::kSharps[i]);
     genreBox.addItemList(gn, 1); pianoBox.addItemList(pn, 1); keyBox.addItemList(kn, 1); complexityBox.addItemList(cx, 1);
     for (int i = 0; i < 6; ++i) progressionBox.addItem("Progressione " + juce::String(i + 1), i + 1);
+    arpBox.addItem("Arpeggio: ritmo del genere", 1);
+    for (size_t i = 0; i < cp::arpeggios().size(); ++i) arpBox.addItem(juce::String((int) i + 1) + ". " + juce::String::fromUTF8(cp::arpeggios()[i].name), (int) i + 2);
+    melodyBox.addItem("Melodia: nessuna", 1);
+    for (size_t i = 0; i < cp::melodyNames().size(); ++i) melodyBox.addItem("Melodia " + juce::String((int) i + 1) + ". " + juce::String::fromUTF8(cp::melodyNames()[i].c_str()), (int) i + 2);
+    arpBox.getProperties().set("accent", (juce::int64) teal.getARGB());
+    melodyBox.getProperties().set("accent", (juce::int64) pink.getARGB());
+    newSongButton.getProperties().set("song", true);
+    newSongButton.onClick = [this] { proc.newSong(); };
+    geniusButton.setClickingTogglesState(true);
+    geniusButton.getProperties().set("genius", true);
     genreBox.getProperties().set("accent", (juce::int64) green.getARGB());
     pianoBox.getProperties().set("accent", (juce::int64) violet.getARGB());
     playButton.getProperties().set("primary", true);
@@ -173,7 +188,8 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
     italianToggle.setToggleState(true, juce::dontSendNotification);
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &genreBox, &pianoBox, &keyBox, &complexityBox, &progressionBox,
-            &minorToggle, &synthToggle, &syncToggle, &italianToggle, &playButton, &bpmSlider, &octDown, &octUp, &keyboard })
+            &minorToggle, &synthToggle, &syncToggle, &italianToggle, &playButton, &bpmSlider, &octDown, &octUp, &keyboard,
+            &arpBox, &melodyBox, &newSongButton, &geniusButton })
         addAndMakeVisible(c);
     for (auto& c : cards) {
         addAndMakeVisible(c);
@@ -193,10 +209,13 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
     keyA = std::make_unique<CA>(s, "key", keyBox);
     cxA = std::make_unique<CA>(s, "complexity", complexityBox);
     progA = std::make_unique<CA>(s, "progression", progressionBox);
+    arpA = std::make_unique<CA>(s, "arp", arpBox);
+    melA = std::make_unique<CA>(s, "melody", melodyBox);
     minorA = std::make_unique<BA>(s, "minor", minorToggle);
     synthA = std::make_unique<BA>(s, "synth", synthToggle);
     syncA = std::make_unique<BA>(s, "sync", syncToggle);
     playA = std::make_unique<BA>(s, "play", playButton);
+    geniusA = std::make_unique<BA>(s, "genius", geniusButton);
     bpmA = std::make_unique<SA>(s, "bpm", bpmSlider);
     italianToggle.onClick = [this] { keyboard.italian = italianToggle.getToggleState(); recompute(); };
     octDown.onClick = [this] { keyboard.lowest = std::max(24, keyboard.lowest - 12); recompute(); };
@@ -204,7 +223,7 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
 
     setResizable(true, true);
     setResizeLimits(760, 440, 2400, 1400);
-    setSize(1100, 640);
+    setSize(1100, 690);
     syncEngine(); recompute();
     startTimerHz(30);
 }
@@ -263,8 +282,13 @@ void ChordPilotEditor::timerCallback() {
     for (int i = 0; i < n2; ++i) { int v = proc.noteFifoData[(size_t) (s2 + i)]; engine.noteOn(v & 0x7f, (v >> 8) & 0x7f); }
     proc.noteFifo.finishedRead(n1 + n2);
 
-    std::set<int> h, p;
-    for (int n = 0; n < 128; ++n) { if (proc.held[(size_t) n] > 0) h.insert(n); if (proc.patternNotes[(size_t) n] > 0) p.insert(n); }
+    std::set<int> h, p, mel;
+    for (int n = 0; n < 128; ++n) {
+        if (proc.held[(size_t) n] > 0) h.insert(n);
+        if (proc.patternNotes[(size_t) n] > 0) p.insert(n);
+        if (proc.melodyNotes[(size_t) n] > 0) mel.insert(n);
+    }
+    if (mel != melody) { melody = mel; keyboard.melody = mel; keyboard.repaint(); }
     bool changed = false;
     if (h != held) { held = h; heldChangedAt = juce::Time::getMillisecondCounter(); changed = true; }
     else if (heldChangedAt && juce::Time::getMillisecondCounter() - heldChangedAt > 250) {
@@ -312,8 +336,8 @@ void ChordPilotEditor::paint(juce::Graphics& g) {
         + " " + juce::String(cp::scaleDisplayName(result.scale)) + (engine.fixedKey ? "" : " - auto");
     g.drawText(scale, st.withX(st.getX() + 260).withTrimmedTop(14), juce::Justification::centredLeft);
     // Legend
-    auto lg = st.withTrimmedLeft(st.getWidth() - 420).withTrimmedTop(16);
-    const std::pair<juce::Colour, const char*> items[] = { { green, "Accordo migliore" }, { violet, "Alternative" }, { cyan, "Melodia" }, { magenta, "Genre Player" } };
+    auto lg = st.withTrimmedLeft(st.getWidth() - 525).withTrimmedTop(16);
+    const std::pair<juce::Colour, const char*> items[] = { { green, "Accordo migliore" }, { violet, "Alternative" }, { cyan, "Melodia" }, { magenta, "Player" }, { pink, "Melodia Player" } };
     g.setFont(juce::FontOptions(12.0f));
     for (auto& [c, t] : items) {
         g.setColour(c); g.fillRoundedRectangle(lg.getX(), lg.getCentreY() - 5, 10, 10, 3);
@@ -355,6 +379,12 @@ void ChordPilotEditor::resized() {
     synthToggle.setBounds(second.removeFromLeft(120));
     syncToggle.setBounds(second.removeFromLeft(100));
     italianToggle.setBounds(second.removeFromLeft(100));
+    r.removeFromTop(8);
+    auto third = r.removeFromTop(30);
+    arpBox.setBounds(third.removeFromLeft(240)); third.removeFromLeft(8);
+    melodyBox.setBounds(third.removeFromLeft(260)); third.removeFromLeft(8);
+    newSongButton.setBounds(third.removeFromLeft(160)); third.removeFromLeft(8);
+    geniusButton.setBounds(third.removeFromLeft(170));
     r.removeFromTop(8);
     statusArea = r.removeFromTop(48);
     r.removeFromTop(6);

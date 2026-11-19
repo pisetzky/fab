@@ -9,6 +9,7 @@ final class PianoKeyboardUIView: UIView {
     var octaves = 3 { didSet { if oldValue != octaves { releaseAll(); setNeedsDisplay() } } }
     var held: Set<Int> = [] { didSet { if oldValue != held { setNeedsDisplay() } } }
     var patternNotes: Set<Int> = [] { didSet { if oldValue != patternNotes { setNeedsDisplay() } } }
+    var melodyNotes: Set<Int> = [] { didSet { if oldValue != melodyNotes { setNeedsDisplay() } } }
     var highlights: [Int: KeyHighlight] = [:] { didSet { if oldValue != highlights { setNeedsDisplay() } } }
     var accent: UIColor = .systemPink { didSet { setNeedsDisplay() } }
     var showScale = true { didSet { setNeedsDisplay() } }
@@ -150,6 +151,12 @@ final class PianoKeyboardUIView: UIView {
             UIBezierPath(roundedRect: CGRect(x: f.minX + 3, y: 4, width: f.width - 6, height: 6), cornerRadius: 3).fill()
         }
 
+        // Genre player melody: pink bar.
+        if melodyNotes.contains(n) {
+            UIColor(hex: 0xFF6FB5).setFill()
+            UIBezierPath(roundedRect: CGRect(x: f.minX + 3, y: 13, width: f.width - 6, height: 6), cornerRadius: 3).fill()
+        }
+
         // Held notes: bright outline.
         if isHeld {
             ctx.saveGState()
@@ -235,6 +242,7 @@ struct PianoKeyboard: UIViewRepresentable {
         v.octaves = controller.octaves
         v.held = controller.held
         v.patternNotes = controller.patternNotes
+        v.melodyNotes = controller.melodyNotes
         v.highlights = controller.result.highlights
         v.accent = accent
         v.showScale = controller.showScaleHints

@@ -38,6 +38,12 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
     }
     public private(set) var complexity: ChordComplexity = .genre
     public private(set) var progressionIndex = 0
+    public private(set) var arpeggio = -1        // -1 = genre rhythm
+    public private(set) var melody = -1          // -1 = no melody
+    public private(set) var song = 0             // song variation seed
+    public private(set) var genius = false
+    private let geniusEngine = SuggestionEngine()
+    private var geniusTimer: Timer?
     public private(set) var currentPattern: GenrePattern?
 
     /// Called on the main thread whenever a parameter changes (host automation, preset, UI).
@@ -96,7 +102,13 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
             p("progression", "Progressione", .progression, 0, 5, .indexed, (1...6).map { "Progressione \($0)" }),
             p("bpm", "BPM", .bpm, 40, 220, .BPM),
             p("piano", "Pianoforte", .piano, 0, AUValue(PianoModel.all.count - 1), .indexed,
-              PianoModel.all.map { "\($0.emoji) \($0.name)" })
+              PianoModel.all.map { "\($0.emoji) \($0.name)" }),
+            p("arpeggio", "Arpeggio", .arpeggio, 0, AUValue(Arpeggios.all.count), .indexed,
+              ["Ritmo del genere"] + Arpeggios.all.enumerated().map { "\($0.offset + 1). \($0.element.name)" }),
+            p("melody", "Melodia", .melody, 0, AUValue(Melodies.count), .indexed,
+              ["Nessuna"] + Melodies.names.enumerated().map { "\($0.offset + 1). \($0.element)" }),
+            p("song", "Canzone", .song, 0, 9999, .generic),
+            p("genius", "Modalità Genio", .genius, 0, 1, .boolean)
         ]
         params[Int(ParamAddress.volume.rawValue)].value = 0.8
         params[Int(ParamAddress.synth.rawValue)].value = kernel.isMIDIEffect ? 0 : 1
@@ -134,6 +146,10 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         case .progression: return AUValue(progressionIndex)
         case .bpm: return AUValue(kernel.internalBPM)
         case .piano: return AUValue(kernel.pianoType)
+        case .arpeggio: return AUValue(arpeggio + 1)
+        case .melody: return AUValue(melody + 1)
+        case .song: return AUValue(song)
+        case .genius: return genius ? 1 : 0
         case .none: return 0
         }
     }
@@ -171,6 +187,13 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
             rebuild = true
         case .bpm: kernel.internalBPM = Double(value)
         case .piano: kernel.pianoType = max(0, min(PianoModel.all.count - 1, Int(value.rounded())))
+        case .arpeggio: arpeggio = max(-1, min(Arpeggios.all.count - 1, Int(value.rounded()) - 1)); rebuild = true
+        case .melody: melody = max(-1, min(Melodies.count - 1, Int(value.rounded()) - 1)); rebuild = true
+        case .song: song = max(0, Int(value.rounded())); rebuild = true
+        case .genius:
+            genius = value > 0.5
+            kernel.geniusEnabled = genius
+            scheduleGeniusRefresh()
         case .none: break
         }
         if rebuild { schedulePatternRebuild() } else { notifyStateChange() }
@@ -192,11 +215,64 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
 
     private func rebuildPattern() {
         let p = GenrePatternBuilder.build(genre: genre, key: playerKey, progressionIndex: progressionIndex,
-                                          complexity: complexity)
+                                          complexity: complexity, arpeggio: arpeggio, melody: melody, seed: song)
         currentPattern = p
-        kernel.publishPattern(events: p.events.map { ($0.step, $0.note, $0.velocity) },
+        scheduleGeniusRefresh()
+        kernel.publishPattern(events: p.events.map { ($0.step, $0.note, $0.velocity, $0.lane) },
                               totalSteps: p.totalSteps, stepsPerChord: 16 * max(1, genre.barsPerChord))
         notifyStateChange()
+    }
+
+    /// A completely different song: new progression, arpeggio, melody and variation – and start playing.
+    public func newSong() {
+        set(.progression, AUValue(Int.random(in: 0..<genre.progressions.count)))
+        set(.arpeggio, AUValue(Int.random(in: 1...Arpeggios.all.count)))
+        set(.melody, AUValue(Int.random(in: 1...Melodies.count)))
+        set(.song, AUValue(Int.random(in: 1...9999)))
+        set(.play, 1)
+    }
+
+    // MARK: Genius mode (main thread): learns from what is played and refreshes the kernel's lookup table.
+
+    private func scheduleGeniusRefresh() {
+        let work = { [weak self] in
+            guard let self else { return }
+            if self.genius && self.geniusTimer == nil {
+                let t = Timer(timeInterval: 1.0 / 15.0, repeats: true) { [weak self] _ in self?.geniusTick() }
+                RunLoop.main.add(t, forMode: .common)
+                self.geniusTimer = t
+            } else if !self.genius {
+                self.geniusTimer?.invalidate(); self.geniusTimer = nil
+            }
+            self.refreshGeniusTable()
+        }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
+    }
+
+    private func geniusTick() {
+        var msg: UInt32 = 0, changed = false
+        while cp_ring_pop(kernel.geniusRing, &msg) {
+            changed = true
+            if msg & 0x10000 != 0 { geniusEngine.registerNoteOn(Int(msg & 0x7F)) }
+            else if msg & 0x20000 != 0 {
+                let q = ChordQuality.allCases[min(ChordQuality.allCases.count - 1, Int(msg & 0xFF))]
+                geniusEngine.commit(chord: Chord(root: Int((msg >> 8) & 0xFF), quality: q))
+            }
+        }
+        if changed { refreshGeniusTable() }
+    }
+
+    private func refreshGeniusTable() {
+        if geniusEngine.genre != genre { geniusEngine.genre = genre; geniusEngine.reset() }
+        geniusEngine.complexity = complexity
+        geniusEngine.fixedKey = fixedKey
+        let entries: [(shift: Int, root: Int, quality: Int, tones: [Int])] = (0..<12).map { pc in
+            let g = geniusEngine.genius(note: 60 + pc)
+            var tones: [Int] = []
+            for iv in g.chord.quality.intervals where !tones.contains(mod12(g.chord.root + iv)) { tones.append(mod12(g.chord.root + iv)) }
+            return (g.shift, g.chord.root, ChordQuality.allCases.firstIndex(of: g.chord.quality) ?? 0, tones)
+        }
+        kernel.publishGeniusTable(entries)
     }
 
     private func notifyStateChange() {

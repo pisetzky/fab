@@ -39,7 +39,8 @@ public:
     juce::AudioProcessorValueTreeState params;
     juce::MidiKeyboardState keyboardState;                 // on-screen keyboard → audio thread
     std::array<std::atomic<uint8_t>, 128> held {};         // notes the musician holds
-    std::array<std::atomic<uint8_t>, 128> patternNotes {}; // notes from the genre player
+    std::array<std::atomic<uint8_t>, 128> patternNotes {}; // accompaniment notes from the genre player
+    std::array<std::atomic<uint8_t>, 128> melodyNotes {};  // melody notes from the genre player
     std::atomic<int> patternChordIndex { 0 };
     std::atomic<int> detectedKeyCode { -1 };               // tonic + 12*minor, set by the editor in Auto mode
     juce::AbstractFifo noteFifo { 512 };                   // audio → editor: note-ons for key detection
@@ -50,6 +51,11 @@ public:
     cp::Key playerKey() const;
     std::shared_ptr<const cp::Pattern> currentPattern() const { return std::atomic_load(&pattern); }
     void playChord(const std::vector<int>& notes, bool on); // tapped suggestion (sent on MIDI channel 16)
+    void newSong();                                         // random progression + arpeggio + melody + variation
+
+    /// Genius mode lookup for one pitch class (built on the message thread, read by the audio thread).
+    struct GeniusEntry { int shift = 0; int root = 0; int quality = 0; int tones[6] {}; int numTones = 0; };
+    using GeniusTable = std::array<GeniusEntry, 12>;
 
 private:
     void timerCallback() override;
@@ -57,11 +63,25 @@ private:
     void handleMidi(const juce::MidiMessage& m, int offset, juce::MidiBuffer& out, bool fromPattern);
     void fireStep(int step, const cp::Pattern& p, int offset, juce::MidiBuffer& out);
     void releasePattern(int offset, juce::MidiBuffer& out);
+    void handleInput(const juce::MidiMessage& m, int offset, juce::MidiBuffer& out);
+    void geniusChordOff(int offset, juce::MidiBuffer& out);
+    void rebuildGeniusTable();
+
+    // Genius mode
+    cp::Engine geniusEngine;                                // message thread
+    std::shared_ptr<const GeniusTable> geniusTable;         // swapped atomically
+    juce::AbstractFifo geniusFifo { 256 };                  // audio → message thread: notes and chosen chords
+    std::array<int, 256> geniusFifoData {};
+    std::array<int, 128> pressedToSounding {};
+    int geniusNotes[8] {}; int geniusCount = 0; int geniusTones[6] {}; int geniusNumTones = 0;
+    long long geniusChangedAt = -1000000, lastNoteAt = 0, sampleClock = 0;
+    bool geniusChordOn = false;
+    int lastGeniusGenre = -1, geniusDirty = 1;
 
     PianoSynth synth;
     std::shared_ptr<const cp::Pattern> pattern;            // swapped atomically (message thread → audio thread)
     std::shared_ptr<const cp::Pattern> audioPattern;       // audio thread's copy
-    std::array<int, 6> lastParamState { -1, -1, -1, -1, -1, -1 };
+    std::array<int, 8> lastParamState { -1, -1, -1, -1, -1, -1, -1, -1 };
     int lastDetected = -2;
 
     double sampleRate = 44100;

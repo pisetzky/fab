@@ -24,6 +24,11 @@ public final class ChordPilotController: ObservableObject {
     @Published public private(set) var hostSync = true
     @Published public private(set) var progressionIndex = 0
     @Published public private(set) var piano: PianoModel = PianoModel.all[0]
+    @Published public private(set) var arpeggio = -1
+    @Published public private(set) var melody = -1
+    @Published public private(set) var song = 0
+    @Published public private(set) var genius = false
+    @Published public private(set) var melodyNotes: Set<Int> = []
     @Published public var italianNames = Locale.current.language.languageCode?.identifier == "it"
     @Published public var lowestNote = 48        // C3
     @Published public var octaves = 3
@@ -77,6 +82,7 @@ public final class ChordPilotController: ObservableObject {
         synthOn = au.parameterValue(.synth) > 0.5
         hostSync = au.parameterValue(.hostSync) > 0.5
         progressionIndex = au.progressionIndex
+        arpeggio = au.arpeggio; melody = au.melody; song = au.song; genius = au.genius
         piano = PianoModel.all[max(0, min(PianoModel.all.count - 1, Int(au.parameterValue(.piano).rounded())))]
         patternChords = au.currentPattern?.chords ?? []
         engine.genre = genre
@@ -96,12 +102,14 @@ public final class ChordPilotController: ObservableObject {
             engine.registerNoteOn(Int(msg & 0x7F), velocity: Int((msg >> 8) & 0x7F))
         }
         var h = Set<Int>()
-        var p = Set<Int>()
+        var p = Set<Int>(), mel = Set<Int>()
         for n in 0..<128 {
             if k.heldNotes[n] > 0 { h.insert(n) }
             if k.patternNotes[n] > 0 { p.insert(n) }
+            if k.melodyNotes[n] > 0 { mel.insert(n) }
         }
         if p != patternNotes { patternNotes = p }
+        if mel != melodyNotes { melodyNotes = mel }
         let idx = Int(k.patternChordIndex)
         if idx != patternChordIndex { patternChordIndex = idx }
 
@@ -151,12 +159,13 @@ public final class ChordPilotController: ObservableObject {
             while bass >= low { bass -= 12 }
             if bass >= 24 { notes.insert(bass, at: 0) }
         }
-        for n in notes { k.sendFromUI(status: 0x90, data1: UInt8(n), data2: 96) }
+        // Channel 16 marks tapped suggestions (not counted as held, never transformed by Genius mode).
+        for n in notes { k.sendFromUI(status: 0x9F, data1: UInt8(n), data2: 96) }
         engine.didPlay(voicing: s.voicing, chord: s.chord)
         lastCommitted = s.chord
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 900_000_000)
-            for n in notes { self?.audioUnit?.kernel.sendFromUI(status: 0x80, data1: UInt8(n), data2: 0) }
+            for n in notes { self?.audioUnit?.kernel.sendFromUI(status: 0x8F, data1: UInt8(n), data2: 0) }
             self?.recompute()
         }
         recompute()
@@ -178,6 +187,10 @@ public final class ChordPilotController: ObservableObject {
     public func setSynth(_ on: Bool) { audioUnit?.set(.synth, on ? 1 : 0) }
     public func setHostSync(_ on: Bool) { audioUnit?.set(.hostSync, on ? 1 : 0) }
     public func setProgression(_ i: Int) { audioUnit?.set(.progression, AUValue(i)) }
+    public func setArpeggio(_ i: Int) { audioUnit?.set(.arpeggio, AUValue(i + 1)) }
+    public func setMelody(_ i: Int) { audioUnit?.set(.melody, AUValue(i + 1)) }
+    public func setGenius(_ on: Bool) { audioUnit?.set(.genius, on ? 1 : 0) }
+    public func newSong() { audioUnit?.newSong() }
     public func setPiano(_ m: PianoModel) { audioUnit?.set(.piano, AUValue(PianoModel.all.firstIndex(of: m) ?? 0)) }
     public func resetContext() { engine.reset(); lastCommitted = nil; recompute() }
 

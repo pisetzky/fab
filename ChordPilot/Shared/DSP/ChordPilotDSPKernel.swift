@@ -8,6 +8,7 @@ struct RawPatternEvent {
     var step: Int32
     var note: UInt8
     var velocity: UInt8
+    var lane: UInt8 = 0      // 0 = chords / bass (MIDI ch 1), 1 = melody (MIDI ch 2)
 }
 
 /// One synth voice. Harmonic phases live in the kernel's flat arrays (index = voice * 6 + harmonic).
@@ -47,13 +48,33 @@ final class ChordPilotDSPKernel {
     // MARK: Shared with the UI (read-only from the UI side)
     /// Velocity of each note the musician is currently holding (0 = not held).
     let heldNotes = UnsafeMutablePointer<UInt8>.allocate(capacity: 128)
-    /// Notes currently sounding from the genre player.
+    /// Notes currently sounding from the genre player (accompaniment and melody).
     let patternNotes = UnsafeMutablePointer<UInt8>.allocate(capacity: 128)
+    let melodyNotes = UnsafeMutablePointer<UInt8>.allocate(capacity: 128)
     /// Index of the chord the genre player is on (written by the audio thread).
     private(set) var patternChordIndex: Int32 = 0
     /// Increments on every note-on so the UI can feed key detection without missing short notes.
     private(set) var noteOnCounter: UInt32 = 0
     let lastNotesRing = cp_ring_create(256)      // audio → UI: note-ons (for key detection)
+    let geniusRing = cp_ring_create(256)         // audio → AU: genius notes (0x10000|n) and chords (0x20000|root<<8|quality)
+
+    // MARK: Genius mode (table of 12 pitch classes × 8 ints, triple buffered)
+    var geniusEnabled = false
+    static let geniusStride = 9                  // shift, root, numTones, tones[5], quality
+    private let geniusTables: [UnsafeMutablePointer<Int32>] = (0..<3).map { _ in
+        let p = UnsafeMutablePointer<Int32>.allocate(capacity: 12 * 9); p.initialize(repeating: 0, count: 108); return p }
+    private let geniusPending = cp_atomic_create(-1)
+    private let geniusActive = cp_atomic_create(0)
+    private var geniusHasTable = false
+    private let pressedToSounding = UnsafeMutablePointer<Int16>.allocate(capacity: 128)
+    private let gNotes = UnsafeMutablePointer<Int32>.allocate(capacity: 8)
+    private var gCount = 0
+    private let gTones = UnsafeMutablePointer<Int32>.allocate(capacity: 6)
+    private var gNumTones = 0
+    private var gChordOn = false
+    private var gChangedAt: Int64 = -1_000_000
+    private var lastNoteAt: Int64 = 0
+    private var sampleClock: Int64 = 0
 
     // MARK: UI → audio
     let uiRing = cp_ring_create(1024)           // packed MIDI messages from the on-screen keyboard
@@ -97,6 +118,10 @@ final class ChordPilotDSPKernel {
         voices.initialize(repeating: PianoVoice(), count: maxVoices)
         heldNotes.initialize(repeating: 0, count: 128)
         patternNotes.initialize(repeating: 0, count: 128)
+        melodyNotes.initialize(repeating: 0, count: 128)
+        pressedToSounding.initialize(repeating: -1, count: 128)
+        gNotes.initialize(repeating: 0, count: 8)
+        gTones.initialize(repeating: 0, count: 6)
         patternBuffers = (0..<3).map { _ in
             let p = UnsafeMutablePointer<RawPatternEvent>.allocate(capacity: ChordPilotDSPKernel.patternCapacity)
             p.initialize(repeating: RawPatternEvent(step: 0, note: 0, velocity: 0), count: ChordPilotDSPKernel.patternCapacity)
@@ -113,6 +138,10 @@ final class ChordPilotDSPKernel {
         voices.deallocate()
         heldNotes.deallocate()
         patternNotes.deallocate()
+        melodyNotes.deallocate()
+        pressedToSounding.deallocate(); gNotes.deallocate(); gTones.deallocate()
+        geniusTables.forEach { $0.deallocate() }
+        cp_ring_destroy(geniusRing); cp_atomic_destroy(geniusPending); cp_atomic_destroy(geniusActive)
         patternBuffers.forEach { $0.deallocate() }
         patternCounts.deallocate()
         patternTotals.deallocate()
@@ -130,7 +159,8 @@ final class ChordPilotDSPKernel {
     func setup(sampleRate: Double) {
         self.sampleRate = sampleRate
         for i in 0..<maxVoices { voices[i] = PianoVoice() }
-        for n in 0..<128 { heldNotes[n] = 0; patternNotes[n] = 0 }
+        for n in 0..<128 { heldNotes[n] = 0; patternNotes[n] = 0; melodyNotes[n] = 0; pressedToSounding[n] = -1 }
+        gCount = 0; gChordOn = false
         isPlaying = false
         sustain = false
     }
@@ -143,7 +173,23 @@ final class ChordPilotDSPKernel {
     }
 
     /// Publishes a new loop for the genre player (triple buffered, never blocks the audio thread).
-    func publishPattern(events: [(step: Int, note: UInt8, velocity: UInt8)], totalSteps: Int, stepsPerChord: Int) {
+    /// Publishes the genius lookup table: for each pitch class (shift, chord root, chord tones).
+    func publishGeniusTable(_ entries: [(shift: Int, root: Int, quality: Int, tones: [Int])]) {
+        let active = cp_atomic_load(geniusActive), pending = cp_atomic_load(geniusPending)
+        var target: Int32 = 0
+        while target == active || target == pending { target += 1 }
+        let t = geniusTables[Int(target)]
+        for (pc, e) in entries.prefix(12).enumerated() {
+            let b = pc * Self.geniusStride
+            t[b] = Int32(e.shift); t[b + 1] = Int32(e.root)
+            let tones = e.tones.prefix(5)
+            t[b + 2] = Int32(tones.count); t[b + 8] = Int32(e.quality)
+            for (i, x) in tones.enumerated() { t[b + 3 + i] = Int32(x) }
+        }
+        cp_atomic_store(geniusPending, target)
+    }
+
+    func publishPattern(events: [(step: Int, note: UInt8, velocity: UInt8, lane: UInt8)], totalSteps: Int, stepsPerChord: Int) {
         let active = cp_atomic_load(patternActive)
         let pending = cp_atomic_load(patternPending)
         var target: Int32 = 0
@@ -153,7 +199,7 @@ final class ChordPilotDSPKernel {
         let buf = patternBuffers[idx]
         for i in 0..<count {
             let e = events[i]
-            buf[i] = RawPatternEvent(step: Int32(e.step), note: e.note, velocity: e.velocity)
+            buf[i] = RawPatternEvent(step: Int32(e.step), note: e.note, velocity: e.velocity, lane: e.lane)
         }
         patternCounts[idx] = Int32(count)
         patternTotals[idx] = Int32(max(1, totalSteps))
@@ -230,6 +276,9 @@ final class ChordPilotDSPKernel {
         let phaseStart = stepPhase
         let phaseEnd = stepPhase + Double(frames) / samplesPerStep
 
+        let gp = cp_atomic_exchange(geniusPending, -1)
+        if gp >= 0 { cp_atomic_store(geniusActive, gp); geniusHasTable = true }
+
         // 2. On-screen keyboard events (applied at the start of the buffer).
         var msg: UInt32 = 0
         while cp_ring_pop(uiRing, &msg) {
@@ -273,6 +322,15 @@ final class ChordPilotDSPKernel {
             event = UnsafePointer(e.pointee.head.next)
         }
         if isPlaying { stepPhase = phaseEnd }
+        // Genius chord fades out 1.8 s after the last key is released.
+        if gChordOn {
+            var anyHeld = false
+            for n in 0..<128 where heldNotes[n] > 0 { anyHeld = true; break }
+            if !geniusEnabled || (!anyHeld && sampleClock + Int64(frames) - lastNoteAt > Int64(1.8 * sampleRate)) {
+                geniusChordOff(offset: frames - 1, sampleTime: sampleTime)
+            } else if anyHeld { lastNoteAt = sampleClock + Int64(frames) }
+        }
+        sampleClock += Int64(frames)
         if nextStep > 1_000_000_000 { nextStep = nextStep % max(1, total); stepPhase = Double(nextStep) }
     }
 
@@ -323,18 +381,21 @@ final class ChordPilotDSPKernel {
         while cursor < count && buffer[cursor].step < s { cursor += 1 }
         while cursor < count && buffer[cursor].step == s {
             let e = buffer[cursor]
+            let ch: UInt8 = e.lane == 1 ? 1 : 0
+            let arr = e.lane == 1 ? melodyNotes : patternNotes
             if e.velocity > 0 {
-                handleMIDI(0x90, e.note, e.velocity, offset: offset, sampleTime: sampleTime, fromPattern: true, forward: true)
-            } else if patternNotes[Int(e.note)] > 0 {
-                handleMIDI(0x80, e.note, 0, offset: offset, sampleTime: sampleTime, fromPattern: true, forward: true)
+                handleMIDI(0x90 | ch, e.note, e.velocity, offset: offset, sampleTime: sampleTime, fromPattern: true, forward: true)
+            } else if arr[Int(e.note)] > 0 {
+                handleMIDI(0x80 | ch, e.note, 0, offset: offset, sampleTime: sampleTime, fromPattern: true, forward: true)
             }
             cursor += 1
         }
     }
 
     private func releasePatternNotes(at offset: Int, sampleTime: Float64) {
-        for n in 0..<128 where patternNotes[n] > 0 {
-            handleMIDI(0x80, UInt8(n), 0, offset: offset, sampleTime: sampleTime, fromPattern: true, forward: true)
+        for n in 0..<128 {
+            if patternNotes[n] > 0 { handleMIDI(0x80, UInt8(n), 0, offset: offset, sampleTime: sampleTime, fromPattern: true, forward: true) }
+            if melodyNotes[n] > 0 { handleMIDI(0x81, UInt8(n), 0, offset: offset, sampleTime: sampleTime, fromPattern: true, forward: true) }
         }
     }
 
@@ -347,18 +408,26 @@ final class ChordPilotDSPKernel {
     private func handleMIDI(_ status: UInt8, _ d1: UInt8, _ d2: UInt8, offset: Int, sampleTime: Float64,
                             fromPattern: Bool, forward: Bool, fromUI: Bool = false) {
         let type = status & 0xF0
+        let channel = status & 0x0F
+        // Genius mode: user notes become the closest fitting note, harmonised by the next chord.
+        if geniusEnabled && geniusHasTable && !fromPattern && channel != 15 && (type == 0x90 || type == 0x80) {
+            if geniusTransform(status, d1, d2, offset: offset, sampleTime: sampleTime, fromUI: fromUI) { return }
+        }
         let note = Int(d1 & 0x7F)
+        let suggestionLane = !fromPattern && channel == 15      // tapped suggestions use MIDI channel 16
+        let melodyLane = fromPattern && channel == 1
+        let synthLane: UInt8 = fromPattern ? (melodyLane ? 3 : 1) : (suggestionLane ? 2 : 0)
         switch type {
         case 0x90 where d2 > 0:
-            if fromPattern { patternNotes[note] = d2 } else {
+            if fromPattern { (melodyLane ? melodyNotes : patternNotes)[note] = d2 } else if !suggestionLane {
                 heldNotes[note] = d2
                 noteOnCounter &+= 1
                 _ = cp_ring_push(lastNotesRing, UInt32(note) | (UInt32(d2) << 8))
             }
-            if synthEnabled && !isMIDIEffect { noteOn(note, velocity: d2, lane: fromPattern ? 1 : 0) }
+            if synthEnabled && !isMIDIEffect { noteOn(note, velocity: d2, lane: synthLane) }
         case 0x80, 0x90:
-            if fromPattern { patternNotes[note] = 0 } else { heldNotes[note] = 0 }
-            noteOff(note, lane: fromPattern ? 1 : 0)
+            if fromPattern { (melodyLane ? melodyNotes : patternNotes)[note] = 0 } else if !suggestionLane { heldNotes[note] = 0 }
+            noteOff(note, lane: synthLane)
         case 0xB0:
             if d1 == 64 {
                 sustain = d2 >= 64
@@ -374,6 +443,72 @@ final class ChordPilotDSPKernel {
             let len = (type == 0xC0 || type == 0xD0) ? 2 : 3
             _ = out(AUEventSampleTime(sampleTime) + AUEventSampleTime(offset), 0, len, midiBytes)
         }
+    }
+
+    /// Returns true when the event was fully handled.
+    private func geniusTransform(_ status: UInt8, _ d1: UInt8, _ d2: UInt8, offset: Int, sampleTime: Float64, fromUI: Bool) -> Bool {
+        let pressed = Int(d1 & 0x7F)
+        let ch = status & 0x0F
+        if status & 0xF0 == 0x80 || d2 == 0 {
+            let n = pressedToSounding[pressed] >= 0 ? Int(pressedToSounding[pressed]) : pressed
+            pressedToSounding[pressed] = -1
+            for p in 0..<128 where Int(pressedToSounding[p]) == n { return true }   // another key still holds it
+            geniusEnabled = false
+            handleMIDI(0x80 | ch, UInt8(n), 0, offset: offset, sampleTime: sampleTime, fromPattern: false, forward: true, fromUI: fromUI)
+            geniusEnabled = true
+            return true
+        }
+        let t = geniusTables[Int(cp_atomic_load(geniusActive))] + (pressed % 12) * Self.geniusStride
+        let n = max(0, min(127, pressed + Int(t[0])))
+        let now = sampleClock + Int64(offset)
+        var fits = false
+        for i in 0..<gNumTones where Int(gTones[i]) == n % 12 { fits = true }
+        if !(gChordOn && fits && now - gChangedAt < Int64(1.5 * sampleRate)) {
+            geniusChordOff(offset: offset, sampleTime: sampleTime)
+            let root = Int(t[1]), nt = Int(t[2])
+            gNumTones = nt
+            gCount = 0
+            for i in 0..<nt {
+                gTones[i] = t[3 + i]
+                var x = n - 2
+                while x % 12 != Int(t[3 + i]) { x -= 1 }
+                var dup = false
+                for j in 0..<gCount where Int(gNotes[j]) == x { dup = true }
+                if x >= n - 14 && x >= 28 && !dup { gNotes[gCount] = Int32(x); gCount += 1 }
+            }
+            var b = n - 17
+            while b % 12 != root { b -= 1 }
+            if b >= 24 && gCount < 8 { gNotes[gCount] = Int32(b); gCount += 1 }
+            let vel = UInt8(max(1, min(127, Int(Float(d2) * 0.62))))
+            for i in 0..<gCount {
+                if synthEnabled && !isMIDIEffect { noteOn(Int(gNotes[i]), velocity: vel, lane: 4) }
+                sendOut(0x92, UInt8(gNotes[i]), vel, offset: offset, sampleTime: sampleTime)   // chords on MIDI channel 3
+            }
+            gChordOn = true; gChangedAt = now
+            _ = cp_ring_push(geniusRing, 0x20000 | UInt32(root << 8) | UInt32(t[8]))
+        }
+        _ = cp_ring_push(geniusRing, 0x10000 | UInt32(n))
+        pressedToSounding[pressed] = Int16(n)
+        lastNoteAt = now
+        geniusEnabled = false   // route the corrected note through the normal path
+        if heldNotes[n] > 0 { handleMIDI(0x80 | ch, UInt8(n), 0, offset: offset, sampleTime: sampleTime, fromPattern: false, forward: true, fromUI: fromUI) }
+        handleMIDI(0x90 | ch, UInt8(n), d2, offset: offset, sampleTime: sampleTime, fromPattern: false, forward: true, fromUI: fromUI)
+        geniusEnabled = true
+        return true
+    }
+
+    private func geniusChordOff(offset: Int, sampleTime: Float64) {
+        for i in 0..<gCount {
+            noteOff(Int(gNotes[i]), lane: 4)
+            sendOut(0x82, UInt8(gNotes[i]), 0, offset: offset, sampleTime: sampleTime)
+        }
+        gCount = 0; gNumTones = 0; gChordOn = false
+    }
+
+    private func sendOut(_ status: UInt8, _ d1: UInt8, _ d2: UInt8, offset: Int, sampleTime: Float64) {
+        guard let out = midiOut else { return }
+        midiBytes[0] = status; midiBytes[1] = d1; midiBytes[2] = d2
+        _ = out(AUEventSampleTime(sampleTime) + AUEventSampleTime(offset), 0, 3, midiBytes)
     }
 
     private func allNotesOff() {
@@ -576,5 +711,6 @@ final class ChordPilotDSPKernel {
 
 /// Parameter addresses shared by the Audio Unit, the UI and the host.
 public enum ParamAddress: AUParameterAddress {
-    case genre = 0, keyRoot, keyMinor, complexity, volume, synth, hostSync, play, progression, bpm, piano
+    case genre = 0, keyRoot, keyMinor, complexity, volume, synth, hostSync, play, progression, bpm, piano,
+         arpeggio, melody, song, genius
 }

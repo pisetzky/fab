@@ -227,6 +227,9 @@ const std::vector<Genre>& genres() {
         {"blues","Blues","",false,9,95,"blues","blues",{P("I7 I7 I7 I7 IV7 IV7 I7 I7 V7 IV7 I7 V7",3),P("I7 IV7 I7 V7",1.5),P("I7 IV7 I7 I7 IV7 IV7 I7 I7 V7 IV7 I7 I7")},{3,6,10},"x--ox--ox--ox--o","x..fx..fx..fx..f",1,57},
         {"edm","EDM","",true,9,128,"major","naturalMinor",{P("i bVI bIII bVII",3),P("i bVII bVI bVII",1.5),P("bVI bVII i",1.5),P("i bIII bVII bVI")},{2,7},"x-------x-------","..x...x...x...x.",1,60},
         {"house","House","",true,7,124,"major","dorian",{P("i9 iv9",2.5),P("i7 bVIImaj7 bVImaj7 bVII",1.5),P("ii7 V7 Imaj7"),P("i7 IV7",1.5)},{9,2},"..x...x...x...x.","..x...x...x...x.",1,60},
+        {"techno","Techno","",true,9,130,"mixolydian","phrygian",{P("i bII",2),P("i bVII",2),P("i iv",1.5),P("i5 bVI5",1.2)},{1,7},"x..x..x...x..x..","..xx..xx..xx..xx",2,57},
+        {"melodictechno","Melodic Techno","",true,2,124,"lydian","naturalMinor",{P("i bVI bIII bVII",3),P("i bVII bVI bVII",2),P("iadd9 bVImaj7 bIIImaj7 bVII",2),P("i v bVI iv",1.5)},{2,7},"aaaaaaaaaaaaaaaa","..x...x...x...x.",2,60},
+        {"afrohouse","Melodic Afro House","",true,9,122,"major","dorian",{P("i bVII bVI bVII",2.5),P("i iv bVII bIII",2),P("i7 iv7 bVIImaj7",1.5),P("i bVI bVII",1.5)},{9,2},"..x..x..x..x.x..","x..x...x..x.....",1,60},
         {"reggaeton","Reggaeton","",true,4,95,"major","naturalMinor",{P("i bVI bIII bVII",2.5),P("i bVII bVI V",1.5),P("i iv bVII bIII"),P("i bVI bVII")},{3,7},"x..x..x.x..x..x.","x..x..x.x..x..x.",1,60},
         {"latin","Latin / Bossa","",false,5,130,"major","dorian",{P("Imaj7 II7 ii7 V7",2),P("ii7 V7 Imaj7 VI7",2),P("Imaj7 bIIIo7 ii7 V7"),P("i7 iv7 V7 i7")},{2,9,11},"x..x..x...x..x..","x..fx..fx..fx..f",1,60},
         {"country","Country","",false,7,110,"majorPentatonic","naturalMinor",{P("I IV V I",3),P("I V vi IV",1.5),P("I IV I V",1.5),P("I I7 IV iv")},{2,9,3},"x.o.x.o.x.o.x.o.","x...f...x...f...",1,60},
@@ -422,6 +425,40 @@ Result Engine::suggest(const std::vector<int>& heldIn) {
     return r;
 }
 
+Engine::GeniusChoice Engine::genius(int note) {
+    Key k = currentKey();
+    auto scale = scaleSet(k, scaleFor(*genre, k));
+    Result ctx = suggest({});
+    std::set<int> best; if (!ctx.chords.empty()) best = ctx.chords[0].chord.pcs();
+    int m = note;
+    for (int d : { 0, -1, 1, -2, 2 }) {
+        int c = note + d;
+        if (!scale.count(mod12(c))) continue;
+        int twin = note - d;
+        if (d != 0 && scale.count(mod12(twin)) && best.count(mod12(twin)) && !best.count(mod12(c))) { m = twin; break; }
+        m = c; break;
+    }
+    int pc = mod12(m);
+    for (auto& s : ctx.chords) if (s.chord.pcs().count(pc)) return { m, s.chord, m - note };
+    Result r = suggest({ m });
+    Chord ch = r.chords.empty() ? makeChord(k.tonic, qualityIndex(k.minor ? "minor" : "major")) : r.chords[0].chord;
+    return { m, ch, m - note };
+}
+
+int geniusVoicing(const int* tones, int numTones, int root, int melody, int* out) {
+    int count = 0;
+    for (int i = 0; i < numTones; ++i) {
+        int n = melody - 2; while (mod12(n) != tones[i]) --n;
+        if (n >= melody - 14 && n >= 28) {
+            bool dup = false; for (int j = 0; j < count; ++j) dup |= out[j] == n;
+            if (!dup) out[count++] = n;
+        }
+    }
+    int b = melody - 17; while (mod12(b) != root) --b;
+    if (b >= 24) out[count++] = b;
+    return count;
+}
+
 std::vector<int> Engine::melodyHints(const std::vector<int>& held, const Key& k, const std::set<int>& scale, const Chord* next) const {
     if (held.empty()) return {};
     int top = *std::max_element(held.begin(), held.end());
@@ -435,43 +472,201 @@ std::vector<int> Engine::melodyHints(const std::vector<int>& held, const Key& k,
     return v;
 }
 
-Pattern buildPattern(const Genre& g, const Key& k, int progIndex, int complexity) {
+const std::vector<Arpeggio>& arpeggios() {
+    static const std::vector<Arpeggio> a = {
+        {"Su","0123012301230123"}, {"Gi\xC3\xB9","3210321032103210"}, {"Su e gi\xC3\xB9","0123432101234321"},
+        {"Alberti","0212021202120212"}, {"Alberti lento","0.2.1.2.0.2.1.2."}, {"Spezzato","0213021302130213"},
+        {"Ottave","0303030303030303"}, {"Pedale","0102010201020102"}, {"Cascata","5432105432104321"},
+        {"Salita lunga","0123456701234567"}, {"Terzine","012012012012012-"}, {"Rullo gospel","0123c---0123c---"},
+        {"Stab in levare","..c...c...c...c."}, {"Trance gate","c.c.c.c.c.c.c.c."}, {"Dembow","c..c..c.c..c..c."},
+        {"Charleston","c..c......c....."}, {"Bossa","0.2..1.20.2..1.2"}, {"Ballata","0---2---1---2---"},
+        {"Arpa","0123456776543210"}, {"Piano pop","0-2-1-2-c---c-2-"}, {"Ostinato","0202020202020202"},
+        {"Pulsante","c-c-c-c-c-c-c-c-"}, {"Sincopato","c..c..c...c.c..."}, {"Eco","0.0.2.2.1.1.3.3."},
+        {"Scala di accordi","0-1-2-3-4-5-6-7-"}, {"Minimal","0-------2-------"}, {"Reggae skank","..c-..c-..c-..c-"},
+        {"Funk stab","c.cc..c.c..c.c.."}, {"Rotolante","0213243546352413"}, {"Cinematico","0---1---2---3---"} };
+    return a;
+}
+
+const std::vector<std::string>& melodyNames() {
+    static const std::vector<std::string> n = { "Alba","Onda","Eco","Scintilla","Volo","Notte","Cometa","Respiro","Spirale","Orizzonte",
+        "Ritornello","Danza","Riflesso","Sussurro","Vertigine","Marea","Lanterna","Brezza","Aurora","Galassia",
+        "Fuoco","Neon","Miraggio","Tempesta","Cristallo","Satellite","Velluto","Fenice","Polvere di stelle","Eclissi" };
+    return n;
+}
+
+namespace {
+const char* const kRhythms[] = {
+    "x-------x-------","x-----x-------..","x---x-------x---","x-------x---x---","x--x----x-------","x-----------x-x-",
+    "x---x---x-x-x---","x-x---x-x---x---","x--x--x-x---x---","x---x-x---x-x---","x-x-x---x-------","..x-x-x-x---x---",
+    "x--x--x---x-x---","x---x--x--x-x---",
+    "x-x-x-x-x-x-x-x-","x-x-x-x-xxx-x---","x-xxx-x-x-xxx-x-","x.x.x.x.xx.xx.x.","xx-xx-x-xx-xx-x-","x-x-xx-xx-x-xx-x" };
+
+struct GenreMelodyStyle { std::vector<std::string> rhythms; bool rep, oct, chrom, blue; int lift; int density; };
+
+const GenreMelodyStyle& melodyStyle(const std::string& id) {
+    static const std::map<std::string, GenreMelodyStyle> m = {
+        {"pop", {{"x-x-x---x-x-x---","..x-x-x-x--x-x--","x--x--x-x-------","x-xx-x---x-x-x--"}, 1,1,0,0, 2, 1}},
+        {"rock", {{"x---x---x-x-x---","x-x-x-x-x---x---","x--x--x-x-x-----"}, 0,0,0,1, 2, 1}},
+        {"hiphop", {{"x--x--x---x-----","..x-x--x--x-x---","x-x--x--x-x-----"}, 1,0,0,1, 1, 1}},
+        {"trap", {{"x--x--x--x--x-x-","x-----x-x--x----","x--x--x---------"}, 1,0,0,0, 1, 0}},
+        {"rnb", {{"x-----x-x-x-----","..x---x-x--x----","x--x----x-x-x---"}, 0,0,1,0, 2, 0}},
+        {"jazz", {{"x--x-x--x--x-x--","..x-x-x-x-x--x--","x-x--x-x--x-x-x-"}, 0,0,1,0, 2, 2}},
+        {"blues", {{"x--x--x---x-----","..x--x-x--------","x-x--x--x-------"}, 0,0,0,1, 1, 1}},
+        {"edm", {{"x-x-x-x-x--x-x--","x--x--x-x--x--x-","xx-x-x-xx-x-x---"}, 1,1,0,0, 3, 2}},
+        {"house", {{"..x...x...x.x.x.","x--x--x---x-x---","..x-x-x-..x-x-x-"}, 1,0,0,0, 2, 2}},
+        {"techno", {{"x-x-x-x-x-x-x-x-","x--x--x-x--x--x-","x---x---x---x---"}, 1,0,0,0, 1, 2}},
+        {"melodictechno", {{"x-x-x-x-x---x---","x--x--x-x-------","x---x-x-x---x-x-"}, 1,1,0,0, 3, 1}},
+        {"afrohouse", {{"x..x..x...x.x...","..x..x..x.x.....","x..x.x..x..x...."}, 1,0,1,0, 2, 1}},
+        {"reggaeton", {{"x..x..x.x..x..x.","..x..x.x..x..x..","x..x..x.x-x-x---"}, 1,0,0,0, 2, 1}},
+        {"latin", {{"x..x..x...x.x...","x.x..x.x..x.x...","..x.x..x.x..x..."}, 0,0,1,0, 2, 2}},
+        {"country", {{"x-x-x---x-x-x---","x---x-x-x-------","..x-x-x-x---x---"}, 0,0,0,0, 2, 1}},
+        {"funk", {{"x.xx.x..x.x.xx..","..x.xx.x..x.x.x.","x..x.x..xx.x...."}, 1,0,1,1, 1, 2}},
+        {"gospel", {{"x-----x-x-x-----","x--x--x-x-----x-","..x-x-x-x-------"}, 0,0,1,1, 3, 0}},
+        {"metal", {{"xxx-xxx-xxx-xx-x","x-x-x-x-xx-xx-x-","x-xxx-xxx-x-x---"}, 0,1,0,0, 2, 2}},
+        {"reggae", {{"....x-x.....x-x.","x---..x-x---..x-","..x-x---..x-x---"}, 1,0,0,0, 1, 1}},
+        {"classical", {{"x-x-x-x-x---x---","x---x-x-x-x-x---","x-xxx-x-x-------"}, 0,0,1,0, 2, 2}},
+        {"lofi", {{"x-----x---x-----","..x---x-x-------","x---x-------x-x-"}, 0,0,1,0, 1, 0}},
+        {"afrobeats", {{"x..x..x.x.x..x..","..x..x..x.x.x...","x..x.x..x..x.x.."}, 1,0,0,0, 2, 2}},
+        {"cinematic", {{"x-------x---x---","x-----------x---","x---x---x-------"}, 0,1,0,0, 3, 0}} };
+    static const GenreMelodyStyle fallback { {}, 0,0,0,0, 2, 1 };
+    auto it = m.find(id); return it == m.end() ? fallback : it->second;
+}
+
+const int kContours[10][8] = { {0,1,2,3,4,3,2,1},{0,0,1,2,2,3,4,5},{5,4,4,3,2,1,1,0},{0,2,1,3,2,4,3,1},
+    {0,3,1,4,2,5,1,0},{2,2,3,2,2,1,2,2},{0,2,4,2,1,3,5,3},{0,4,1,5,2,4,0,3},{4,4,4,2,3,3,3,1},{0,0,4,4,3,2,1,0} };
+
+std::vector<std::string> rhythmPool(const GenreMelodyStyle& st) {
+    std::vector<int> idx;
+    if (st.density == 0) idx = { 0,1,2,3,4,5, 6,7,8,9 };
+    else if (st.density == 1) idx = { 6,7,8,9,10,11,12,13, 0,1,2 };
+    else idx = { 14,15,16,17,18,19, 9,10,11,12,13 };
+    std::vector<std::string> pool = st.rhythms;
+    pool.insert(pool.end(), st.rhythms.begin(), st.rhythms.end());
+    for (int i : idx) pool.push_back(kRhythms[i]);
+    return pool;
+}
+
+std::vector<PatternEvent> melodyEvents(const Genre& g, int gi, const Key& pk, const std::vector<Chord>& chords,
+                                       int arp, int melody, int seed, int spc) {
+    Rng R((uint32_t) ((gi + 1) * 7919u + (uint32_t) (arp + 2) * 31337u + (uint32_t) (melody + 1) * 104729u + (uint32_t) seed * 15485863u));
+    const auto& st = melodyStyle(g.id);
+    const std::string scaleName = scaleFor(g, pk);
+    std::set<int> scale; for (int i : scaleIntervals(scaleName)) scale.insert(mod12(pk.tonic + i));
+    const int center = g.octave + 10, lo = center - 9, hi = center + 14;
+    std::vector<int> notes; for (int n = lo; n <= hi; ++n) if (scale.count(mod12(n))) notes.push_back(n);
+    int base = 0; for (int i = 0; i < (int) notes.size(); ++i) if (std::abs(notes[(size_t) i] - (center - 3)) < std::abs(notes[(size_t) base] - (center - 3))) base = i;
+    auto pool = rhythmPool(st);
+    const int P = (int) pool.size();
+    const std::string rA = pool[(size_t) ((melody * 3 + R(P)) % P)];
+    const std::string rB = pool[(size_t) ((melody * 7 + 2 + R(P)) % P)];
+    const int* cA = kContours[(melody + R(10)) % 10];
+    const int* cB = kContours[(melody * 3 + 1 + R(10)) % 10];
+    const int lift = st.lift, reg = R(3) - 1;
+    const bool repHook = st.rep && R(3) != 0;
+    std::vector<int> sig; for (int o : g.signatureNotes) sig.push_back(mod12(pk.tonic + o));
+    const int blue[3] = { mod12(pk.tonic + 3), mod12(pk.tonic + 6), mod12(pk.tonic + 10) };
+    const int total = spc * (int) chords.size(), N = (int) notes.size();
+    auto clampIdx = [&](int i) { return std::max(0, std::min(N - 1, i)); };
+    auto nearestChordTone = [&](int n, const std::set<int>& cp) {
+        int best = n, bd = 99;
+        for (int m : notes) if (cp.count(mod12(m)) && std::abs(m - n) < bd) { bd = std::abs(m - n); best = m; }
+        return best;
+    };
+    auto contains = [](const auto& v, int x) { return std::find(std::begin(v), std::end(v), x) != std::end(v); };
+    std::vector<PatternEvent> ev;
+    int prev = -1;
+    for (int b = 0; b < total / 16; ++b) {
+        int ci = b * 16 / spc; auto chordPcs = chords[(size_t) ci].pcs();
+        int phrase = (b / 2) % 4, inPhrase = b % 2;
+        bool isB = phrase == 2; const std::string& rhythm = isB ? rB : rA; const int* contour = isB ? cB : cA;
+        int shift = reg + (isB ? lift : 0) + (phrase == 1 && inPhrase == 1 ? -1 : 0);
+        std::vector<int> starts; for (int s = 0; s < 16; ++s) if (rhythm[(size_t) s] == 'x') starts.push_back(s);
+        for (size_t k = 0; k < starts.size(); ++k) {
+            int s = starts[k], e = s + 1; while (e < 16 && rhythm[(size_t) e] == '-') ++e;
+            int pos = inPhrase * 4 + s / 4;
+            int idx = clampIdx(base + contour[pos] + shift);
+            if (repHook && inPhrase == 0 && k > 0 && k < 3) idx = clampIdx(base + contour[0] + shift);
+            int n = notes[(size_t) idx];
+            if (s % 8 == 0 || k == 0) n = nearestChordTone(n, chordPcs);
+            else if (st.blue && R(5) == 0) {
+                for (int m : { n - 1, n + 1, n - 2 }) if (contains(blue, mod12(m)) && m >= lo && m <= hi) { n = m; break; }
+            } else if (R(6) == 0) {
+                std::vector<int> near; for (int m : notes) if (contains(sig, mod12(m)) && std::abs(m - n) <= 3) near.push_back(m);
+                if (!near.empty()) n = near[(size_t) R((int) near.size())];
+            }
+            if (st.oct && isB && inPhrase == 0 && k == 0 && n + 12 <= hi + 5) n += 12;
+            if (n == prev && !(repHook && inPhrase == 0) && R(2) == 0) {
+                auto it = std::find(notes.begin(), notes.end(), n);
+                int j = (it == notes.end() ? -1 : (int) (it - notes.begin())) + (R(2) ? 1 : -1);
+                if (j >= 0 && j < N) n = notes[(size_t) j];
+            }
+            bool hasNext = k + 1 < starts.size(); int next = hasNext ? starts[k + 1] : -1;
+            if (st.chrom && hasNext && next % 8 == 0 && e - s >= 2 && R(3) == 0) {
+                int target = nearestChordTone(notes[(size_t) clampIdx(base + contour[inPhrase * 4 + next / 4] + shift)], chordPcs);
+                int mid = s + std::max(1, (e - s) / 2);
+                ev.push_back({ b * 16 + s, n, 92, 1 }); ev.push_back({ b * 16 + mid, n, 0, 1 });
+                int ap = target - 1, stop = b * 16 + e;
+                ev.push_back({ b * 16 + mid, ap, 78, 1 }); ev.push_back({ stop >= total ? 0 : stop, ap, 0, 1 });
+                prev = ap; continue;
+            }
+            int start = b * 16 + s, stop = b * 16 + e;
+            int vel = (s % 4 == 0 ? 100 : 82) + R(9) - 4;
+            ev.push_back({ start, n, vel, 1 }); ev.push_back({ stop >= total ? 0 : stop, n, 0, 1 });
+            prev = n;
+        }
+    }
+    return ev;
+}
+} // namespace
+
+Pattern buildPattern(const Genre& g, const Key& k, int progIndex, int complexity, int arp, int melody, int seed) {
     Key pk = progressionKey(g, k);
     const auto& p = g.progressions[(size_t) std::max(0, std::min(progIndex, (int) g.progressions.size() - 1))];
     Pattern pat;
     for (const auto& rc : p.chords) pat.chords.push_back(adjust(romanChord(rc, pk), complexity));
     int spc = 16 * std::max(1, g.barsPerChord), total = spc * (int) pat.chords.size();
     pat.total = total; pat.stepsPerChord = spc;
+    const char* arpSteps = (arp >= 0 && arp < (int) arpeggios().size()) ? arpeggios()[(size_t) arp].steps : nullptr;
     std::vector<int> prev;
     for (size_t ci = 0; ci < pat.chords.size(); ++ci) {
         const Chord& c = pat.chords[ci];
         auto v = voicing(c, g.octave, prev, false); prev = v;
-        std::vector<int> arp = v.size() <= 1 ? std::vector<int>{0} : v.size() == 2 ? std::vector<int>{0,1} :
-                               v.size() == 3 ? std::vector<int>{0,2,1,2} : std::vector<int>{0,2,1,3};
+        std::vector<int> ext = v; for (int n : v) ext.push_back(n + 12); if (ext.size() > 8) ext.resize(8);
+        std::vector<int> arpOrder = v.size() <= 1 ? std::vector<int>{0} : v.size() == 2 ? std::vector<int>{0,1} :
+                                    v.size() == 3 ? std::vector<int>{0,2,1,2} : std::vector<int>{0,2,1,3};
         int bass = (int) std::floor(v[0] / 12.0) * 12 + c.root; while (bass + 12 >= v[0]) bass -= 12; if (bass < 24) bass += 12;
         const auto& iv = qualities()[c.quality].iv;
         auto has = [&](int x) { return std::find(iv.begin(), iv.end(), x) != iv.end(); };
         int fifth = has(7) ? 7 : has(6) ? 6 : has(8) ? 8 : 7;
         std::vector<int> on; int bOn = -1, ai = 0;
+        auto offAll = [&](int step) { for (int n : on) pat.events.push_back({ step, n, 0, 0 }); on.clear(); };
         for (int s = 0; s < spc; ++s) {
-            int step = (int) ci * spc + s; char ch = g.chordRhythm[(size_t) (s % 16)], bh = g.bassRhythm[(size_t) (s % 16)];
-            if (ch == 'x' || ch == 'o') {
-                for (int n : on) pat.events.push_back({ step, n, 0 });
-                on = v; for (int n : v) pat.events.push_back({ step, n, ch == 'x' ? 104 : 78 });
-            } else if (ch == 'a') {
-                for (int n : on) pat.events.push_back({ step, n, 0 });
-                int n = v[(size_t) arp[(size_t) (ai % (int) arp.size())]]; ++ai; on = { n };
-                pat.events.push_back({ step, n, ai % 4 == 1 ? 92 : 72 });
-            } else if (ch == '.') { for (int n : on) pat.events.push_back({ step, n, 0 }); on.clear(); }
+            int step = (int) ci * spc + s; char bh = g.bassRhythm[(size_t) (s % 16)];
+            if (arpSteps) {
+                char ch = arpSteps[s % 16];
+                if (ch == 'c') { offAll(step); on = v; for (int n : v) pat.events.push_back({ step, n, s % 4 == 0 ? 100 : 80, 0 }); }
+                else if (ch >= '0' && ch <= '9') { offAll(step); int n = ext[(size_t) ((ch - '0') % (int) ext.size())]; on = { n }; pat.events.push_back({ step, n, s % 4 == 0 ? 96 : 74, 0 }); }
+                else if (ch == '.') offAll(step);
+            } else {
+                char ch = g.chordRhythm[(size_t) (s % 16)];
+                if (ch == 'x' || ch == 'o') { offAll(step); on = v; for (int n : v) pat.events.push_back({ step, n, ch == 'x' ? 104 : 78, 0 }); }
+                else if (ch == 'a') { offAll(step); int n = v[(size_t) arpOrder[(size_t) (ai % (int) arpOrder.size())]]; ++ai; on = { n }; pat.events.push_back({ step, n, ai % 4 == 1 ? 92 : 72, 0 }); }
+                else if (ch == '.') offAll(step);
+            }
             if (bh == 'x' || bh == 'f' || bh == 'o') {
-                if (bOn >= 0) pat.events.push_back({ step, bOn, 0 });
+                if (bOn >= 0) pat.events.push_back({ step, bOn, 0, 0 });
                 int n = bh == 'x' ? bass : bh == 'f' ? bass + fifth : bass + 12; bOn = n;
-                pat.events.push_back({ step, n, bh == 'x' ? 100 : 84 });
-            } else if (bh == '.') { if (bOn >= 0) pat.events.push_back({ step, bOn, 0 }); bOn = -1; }
+                pat.events.push_back({ step, n, bh == 'x' ? 100 : 84, 0 });
+            } else if (bh == '.') { if (bOn >= 0) pat.events.push_back({ step, bOn, 0, 0 }); bOn = -1; }
         }
         int end = ((int) ci + 1) * spc, es = end == total ? 0 : end;
-        for (int n : on) pat.events.push_back({ es, n, 0 });
-        if (bOn >= 0) pat.events.push_back({ es, bOn, 0 });
+        offAll(es);
+        if (bOn >= 0) pat.events.push_back({ es, bOn, 0, 0 });
+    }
+    if (melody >= 0) {
+        int gi = 0; for (size_t i = 0; i < genres().size(); ++i) if (&genres()[i] == &g) gi = (int) i;
+        auto m = melodyEvents(g, gi, pk, pat.chords, arp, melody % kMelodyCount, seed, spc);
+        pat.events.insert(pat.events.end(), m.begin(), m.end());
     }
     std::stable_sort(pat.events.begin(), pat.events.end(), [](const PatternEvent& a, const PatternEvent& b) {
         if (a.step != b.step) return a.step < b.step;

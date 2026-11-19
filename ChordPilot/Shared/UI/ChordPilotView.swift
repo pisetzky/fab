@@ -24,7 +24,7 @@ public enum Aurora {
     public static let cyan = Color(hex: 0x5CD6FF)
     public static let violet = Color(hex: 0x8E6CFF)
     public static let magenta = Color(hex: 0xE05BFF)
-    public static let pink = Color(hex: 0xFF6FB5)
+    public static let pink = Color(hex: 0xFF6FB5)   // genre-player melody
 
     static let uiGreen = UIColor(hex: 0x3DFFB0)
     static let uiViolet = UIColor(hex: 0x8E6CFF)
@@ -89,6 +89,7 @@ public struct ChordPilotView: View {
             VStack(spacing: compact ? 6 : 10) {
                 header(compact: compact)
                 statusRow
+                songBar
                 suggestionStrip(compact: compact)
                 if controller.isPlaying || !compact { progressionStrip }
                 keyboardArea
@@ -252,6 +253,59 @@ public struct ChordPilotView: View {
         .foregroundColor(.white)
     }
 
+    // MARK: Song bar: arpeggio, melody, new song, genius mode
+
+    private var songBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                Menu {
+                    Button { controller.setArpeggio(-1) } label: { Text("Ritmo del genere") }
+                    ForEach(Array(Arpeggios.all.enumerated()), id: \.offset) { i, a in
+                        Button { controller.setArpeggio(i) } label: {
+                            if controller.arpeggio == i { Label("\(i + 1). \(a.name)", systemImage: "checkmark") } else { Text("\(i + 1). \(a.name)") }
+                        }
+                    }
+                } label: {
+                    pill(icon: "waveform.path", text: controller.arpeggio >= 0 ? "Arpeggio: \(Arpeggios.all[controller.arpeggio].name)" : "Arpeggio: ritmo del genere",
+                         tint: Aurora.teal, bold: false)
+                }
+                Menu {
+                    Button { controller.setMelody(-1) } label: { Text("Nessuna melodia") }
+                    ForEach(Array(Melodies.names.enumerated()), id: \.offset) { i, name in
+                        Button { controller.setMelody(i) } label: {
+                            if controller.melody == i { Label("\(i + 1). \(name)", systemImage: "checkmark") } else { Text("\(i + 1). \(name)") }
+                        }
+                    }
+                } label: {
+                    pill(icon: "music.quarternote.3", text: controller.melody >= 0 ? "Melodia \(controller.melody + 1): \(Melodies.names[controller.melody])" : "Melodia: nessuna",
+                         tint: Aurora.pink, bold: false)
+                }
+                Button { controller.newSong() } label: {
+                    Label("Nuova canzone", systemImage: "dice.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(Capsule().fill(LinearGradient(colors: [Aurora.pink.opacity(0.45), Aurora.violet.opacity(0.45)],
+                                                                  startPoint: .leading, endPoint: .trailing)))
+                        .foregroundColor(.white)
+                }
+                Button { controller.setGenius(!controller.genius) } label: {
+                    Label("Modalità Genio", systemImage: "brain.head.profile")
+                        .font(.system(size: 14, weight: .bold))
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(Capsule().fill(controller.genius
+                            ? AnyShapeStyle(LinearGradient(colors: [Aurora.green, Aurora.cyan], startPoint: .leading, endPoint: .trailing))
+                            : AnyShapeStyle(Color.white.opacity(0.08))))
+                        .foregroundColor(controller.genius ? Color(hex: 0x022018) : .white)
+                        .shadow(color: controller.genius ? Aurora.green.opacity(0.6) : .clear, radius: 10)
+                }
+                .accessibilityLabel(controller.genius ? "Disattiva Modalità Genio" : "Attiva Modalità Genio")
+                if controller.song > 0 {
+                    Text("Canzone #\(controller.song)").font(.system(size: 12, weight: .bold)).foregroundColor(Aurora.pink)
+                }
+            }
+        }
+    }
+
     // MARK: Status
 
     private var statusRow: some View {
@@ -291,6 +345,7 @@ public struct ChordPilotView: View {
             legendItem(accent, "Accordo migliore")
             legendItem(Aurora.violet, "Alternative")
             legendItem(Aurora.cyan, "Melodia")
+            legendItem(Aurora.pink, "Melodia Player")
         }
         .font(.system(size: 11, weight: .medium))
         .foregroundColor(.white.opacity(0.7))

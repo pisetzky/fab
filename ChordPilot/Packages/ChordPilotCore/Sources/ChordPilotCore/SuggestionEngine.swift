@@ -243,6 +243,42 @@ public final class SuggestionEngine {
                                 highlights: highlights, melodyNotes: melody)
     }
 
+    /// Genius mode: turns any key into the closest note that fits the song and picks the next chord
+    /// that harmonises it while continuing the progression.
+    public func genius(note: Int) -> (note: Int, chord: Chord, shift: Int) {
+        let key = currentKey
+        let scale = key.scale(genre.scale(for: key))
+        let ctx = suggest(held: [])
+        let best = ctx.chords.first?.chord.pitchClasses ?? []
+        var m = note
+        for d in [0, -1, 1, -2, 2] {
+            let c = note + d
+            guard scale.contains(mod12(c)) else { continue }
+            let twin = note - d
+            if d != 0 && scale.contains(mod12(twin)) && best.contains(mod12(twin)) && !best.contains(mod12(c)) { m = twin; break }
+            m = c; break
+        }
+        let pc = mod12(m)
+        if let s = ctx.chords.first(where: { $0.chord.pitchClasses.contains(pc) }) { return (m, s.chord, m - note) }
+        let r = suggest(held: [m])
+        let ch = r.chords.first?.chord ?? Chord(root: key.tonic, quality: key.isMinor ? .minor : .major)
+        return (m, ch, m - note)
+    }
+
+    /// Chord tones voiced just below the melody note, plus the root in the bass.
+    public static func geniusVoicing(tones: [Int], root: Int, melody: Int) -> [Int] {
+        var out: [Int] = []
+        for pc in tones {
+            var n = melody - 2
+            while mod12(n) != pc { n -= 1 }
+            if n >= melody - 14 && n >= 28 && !out.contains(n) { out.append(n) }
+        }
+        var b = melody - 17
+        while mod12(b) != root { b -= 1 }
+        if b >= 24 { out.append(b) }
+        return out.sorted()
+    }
+
     /// Remember the voicing that was actually played so the next suggestions lead smoothly from it.
     public func didPlay(voicing: [Int], chord: Chord) {
         lastVoicing = voicing

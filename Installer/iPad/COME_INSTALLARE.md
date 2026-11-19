@@ -21,7 +21,7 @@ Funziona già adesso su questo iPad, senza Xcode e senza Apple ID sviluppatore:
 2. Tocca **Condividi** → **Aggiungi alla schermata Home** → **Aggiungi**.
 3. Apri ChordPilot dalla Home: si apre a schermo intero come un'app.
 
-Ha i 20 generi, i 10 pianoforti, i suggerimenti luminosi e il Genre Player.
+Ha i 23 generi, i 10 pianoforti, i suggerimenti luminosi e il Genre Player.
 Non ha il plug-in AUv3 per le DAW e il MIDI esterno (Safari su iPad non supporta il Web MIDI):
 per quelli serve l'app nativa qui sotto.
 

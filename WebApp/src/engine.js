@@ -178,6 +178,9 @@ const CP = (() => {
     G("blues","Blues","🎺",false,9,95,"blues","blues",[prog("I7 I7 I7 I7 IV7 IV7 I7 I7 V7 IV7 I7 V7",3),prog("I7 IV7 I7 V7",1.5),prog("I7 IV7 I7 I7 IV7 IV7 I7 I7 V7 IV7 I7 I7")],[3,6,10],"x--ox--ox--ox--o","x..fx..fx..fx..f",1,57),
     G("edm","EDM","⚡️",true,9,128,"major","naturalMinor",[prog("i bVI bIII bVII",3),prog("i bVII bVI bVII",1.5),prog("bVI bVII i",1.5),prog("i bIII bVII bVI")],[2,7],"x-------x-------","..x...x...x...x.",1,60),
     G("house","House","🏠",true,7,124,"major","dorian",[prog("i9 iv9",2.5),prog("i7 bVIImaj7 bVImaj7 bVII",1.5),prog("ii7 V7 Imaj7"),prog("i7 IV7",1.5)],[9,2],"..x...x...x...x.","..x...x...x...x.",1,60),
+    G("techno","Techno","🔊",true,9,130,"mixolydian","phrygian",[prog("i bII",2),prog("i bVII",2),prog("i iv",1.5),prog("i5 bVI5",1.2)],[1,7],"x..x..x...x..x..","..xx..xx..xx..xx",2,57),
+    G("melodictechno","Melodic Techno","🌌",true,2,124,"lydian","naturalMinor",[prog("i bVI bIII bVII",3),prog("i bVII bVI bVII",2),prog("iadd9 bVImaj7 bIIImaj7 bVII",2),prog("i v bVI iv",1.5)],[2,7],"aaaaaaaaaaaaaaaa","..x...x...x...x.",2,60),
+    G("afrohouse","Melodic Afro House","🥁",true,9,122,"major","dorian",[prog("i bVII bVI bVII",2.5),prog("i iv bVII bIII",2),prog("i7 iv7 bVIImaj7",1.5),prog("i bVI bVII",1.5)],[9,2],"..x..x..x..x.x..","x..x...x..x.....",1,60),
     G("reggaeton","Reggaeton","🌴",true,4,95,"major","naturalMinor",[prog("i bVI bIII bVII",2.5),prog("i bVII bVI V",1.5),prog("i iv bVII bIII"),prog("i bVI bVII")],[3,7],"x..x..x.x..x..x.","x..x..x.x..x..x.",1,60),
     G("latin","Latin / Bossa","💃",false,5,130,"major","dorian",[prog("Imaj7 II7 ii7 V7",2),prog("ii7 V7 Imaj7 VI7",2),prog("Imaj7 bIIIo7 ii7 V7"),prog("i7 iv7 V7 i7")],[2,9,11],"x..x..x...x..x..","x..fx..fx..fx..f",1,60),
     G("country","Country","🤠",false,7,110,"majorPentatonic","naturalMinor",[prog("I IV V I",3),prog("I V vi IV",1.5),prog("I IV I V",1.5),prog("I I7 IV iv")],[2,9,3],"x.o.x.o.x.o.x.o.","x...f...x...f...",1,60),
@@ -334,6 +337,28 @@ const CP = (() => {
       }
       return { current, key: k, scale: st, chords, highlights: hl, melody: mel };
     }
+    /// Genius mode: turns any key into the closest note that fits the song and picks the next chord
+    /// that harmonises it while continuing the progression. Returns { note, chord, shift }.
+    genius(note) {
+      const k = this.currentKey, scale = scaleSet(k, scaleFor(this.genre, k));
+      const ctx = this.suggest([]);
+      const best = ctx.chords[0] ? pcs(ctx.chords[0].chord) : new Set();
+      let m = note;
+      for (const d of [0, -1, 1, -2, 2]) {
+        const c = note + d;
+        if (!scale.has(mod12(c))) continue;
+        const twin = note - d;   // same distance on the other side
+        if (d !== 0 && scale.has(mod12(twin)) && best.has(mod12(twin)) && !best.has(mod12(c))) { m = twin; break; }
+        m = c; break;
+      }
+      const pc = mod12(m);
+      let ch = (ctx.chords.find(s => pcs(s.chord).has(pc)) || {}).chord;
+      if (!ch) { const r = this.suggest([m]); ch = r.chords[0] ? r.chords[0].chord : chord(k.tonic, k.minor ? "minor" : "major"); }
+      return { note: m, chord: ch, shift: m - note };
+    }
+    /// Table for the 12 pitch classes (used by the real-time engines, recomputed as the song moves on).
+    geniusTable() { return [...Array(12)].map((_, pc) => this.genius(60 + pc)); }
+
     melodyHints(held, k, scale, next) {
       if (!held.length) return [];
       const top = Math.max(...held), out = new Set();
@@ -345,35 +370,224 @@ const CP = (() => {
     }
   }
 
-  function buildPattern(g, k, progIndex = 0, complexity = 1) {
+  // ---------- Arpeggios (30) and melodies (20 per genre) ----------
+  // Arpeggio steps: digit = index into the chord tones (+ the same tones an octave up),
+  // c = whole chord, - = hold, . = rest. One bar of 16th notes.
+  const ARPEGGIOS = [
+    ["Su","0123012301230123"], ["Giù","3210321032103210"], ["Su e giù","0123432101234321"],
+    ["Alberti","0212021202120212"], ["Alberti lento","0.2.1.2.0.2.1.2."], ["Spezzato","0213021302130213"],
+    ["Ottave","0303030303030303"], ["Pedale","0102010201020102"], ["Cascata","5432105432104321"],
+    ["Salita lunga","0123456701234567"], ["Terzine","012012012012012-"], ["Rullo gospel","0123c---0123c---"],
+    ["Stab in levare","..c...c...c...c."], ["Trance gate","c.c.c.c.c.c.c.c."], ["Dembow","c..c..c.c..c..c."],
+    ["Charleston","c..c......c....."], ["Bossa","0.2..1.20.2..1.2"], ["Ballata","0---2---1---2---"],
+    ["Arpa","0123456776543210"], ["Piano pop","0-2-1-2-c---c-2-"], ["Ostinato","0202020202020202"],
+    ["Pulsante","c-c-c-c-c-c-c-c-"], ["Sincopato","c..c..c...c.c..."], ["Eco","0.0.2.2.1.1.3.3."],
+    ["Scala di accordi","0-1-2-3-4-5-6-7-"], ["Minimal","0-------2-------"], ["Reggae skank","..c-..c-..c-..c-"],
+    ["Funk stab","c.cc..c.c..c.c.."], ["Rotolante","0213243546352413"], ["Cinematico","0---1---2---3---"]
+  ];
+  const MELODY_NAMES = ["Alba","Onda","Eco","Scintilla","Volo","Notte","Cometa","Respiro","Spirale","Orizzonte",
+    "Ritornello","Danza","Riflesso","Sussurro","Vertigine","Marea","Lanterna","Brezza","Aurora","Galassia",
+    "Fuoco","Neon","Miraggio","Tempesta","Cristallo","Satellite","Velluto","Fenice","Polvere di stelle","Eclissi"];
+  const MELODY_COUNT = 30;
+  const RHYTHMS = [
+    // 0-5 sparse
+    "x-------x-------","x-----x-------..","x---x-------x---","x-------x---x---","x--x----x-------","x-----------x-x-",
+    // 6-13 medium
+    "x---x---x-x-x---","x-x---x-x---x---","x--x--x-x---x---","x---x-x---x-x---","x-x-x---x-------","..x-x-x-x---x---",
+    "x--x--x---x-x---","x---x--x--x-x---",
+    // 14-19 dense
+    "x-x-x-x-x-x-x-x-","x-x-x-x-xxx-x---","x-xxx-x-x-xxx-x-","x.x.x.x.xx.xx.x.","xx-xx-x-xx-xx-x-","x-x-xx-xx-x-xx-x"
+  ];
+  // Hook rhythms heard in each genre's hits (16th grid). They are tried first.
+  const GENRE_RHYTHMS = {
+    pop: ["x-x-x---x-x-x---","..x-x-x-x--x-x--","x--x--x-x-------","x-xx-x---x-x-x--"],
+    rock: ["x---x---x-x-x---","x-x-x-x-x---x---","x--x--x-x-x-----"],
+    hiphop: ["x--x--x---x-----","..x-x--x--x-x---","x-x--x--x-x-----"],
+    trap: ["x--x--x--x--x-x-","x-----x-x--x----","x--x--x---------"],
+    rnb: ["x-----x-x-x-----","..x---x-x--x----","x--x----x-x-x---"],
+    jazz: ["x--x-x--x--x-x--","..x-x-x-x-x--x--","x-x--x-x--x-x-x-"],
+    blues: ["x--x--x---x-----","..x--x-x--------","x-x--x--x-------"],
+    edm: ["x-x-x-x-x--x-x--","x--x--x-x--x--x-","xx-x-x-xx-x-x---"],
+    house: ["..x...x...x.x.x.","x--x--x---x-x---","..x-x-x-..x-x-x-"],
+    techno: ["x-x-x-x-x-x-x-x-","x--x--x-x--x--x-","x---x---x---x---"],
+    melodictechno: ["x-x-x-x-x---x---","x--x--x-x-------","x---x-x-x---x-x-"],
+    afrohouse: ["x..x..x...x.x...","..x..x..x.x.....","x..x.x..x..x...."],
+    reggaeton: ["x..x..x.x..x..x.","..x..x.x..x..x..","x..x..x.x-x-x---"],
+    latin: ["x..x..x...x.x...","x.x..x.x..x.x...","..x.x..x.x..x..."],
+    country: ["x-x-x---x-x-x---","x---x-x-x-------","..x-x-x-x---x---"],
+    funk: ["x.xx.x..x.x.xx..","..x.xx.x..x.x.x.","x..x.x..xx.x...."],
+    gospel: ["x-----x-x-x-----","x--x--x-x-----x-","..x-x-x-x-------"],
+    metal: ["xxx-xxx-xxx-xx-x","x-x-x-x-xx-xx-x-","x-xxx-xxx-x-x---"],
+    reggae: ["....x-x.....x-x.","x---..x-x---..x-","..x-x---..x-x---"],
+    classical: ["x-x-x-x-x---x---","x---x-x-x-x-x---","x-xxx-x-x-------"],
+    lofi: ["x-----x---x-----","..x---x-x-------","x---x-------x-x-"],
+    afrobeats: ["x..x..x.x.x..x..","..x..x..x.x.x...","x..x.x..x..x.x.."],
+    cinematic: ["x-------x---x---","x-----------x---","x---x---x-------"]
+  };
+  // Hook devices per genre: rep = repeated-note hook, oct = octave leap in the chorus,
+  // chrom = chromatic approach notes, blue = blue notes, lift = chorus register lift (degrees).
+  const DEVICES = {
+    pop:{rep:1,oct:1,lift:2}, rock:{blue:1,lift:2}, hiphop:{rep:1,blue:1,lift:1}, trap:{rep:1,lift:1},
+    rnb:{chrom:1,lift:2}, jazz:{chrom:1,lift:2}, blues:{blue:1,lift:1}, edm:{rep:1,oct:1,lift:3},
+    house:{rep:1,lift:2}, techno:{rep:1,lift:1}, melodictechno:{rep:1,oct:1,lift:3}, afrohouse:{rep:1,chrom:1,lift:2}, reggaeton:{rep:1,lift:2}, latin:{chrom:1,lift:2}, country:{lift:2},
+    funk:{chrom:1,blue:1,rep:1,lift:1}, gospel:{chrom:1,blue:1,lift:3}, metal:{oct:1,lift:2}, reggae:{rep:1,lift:1},
+    classical:{chrom:1,lift:2}, lofi:{chrom:1,lift:1}, afrobeats:{rep:1,lift:2}, cinematic:{oct:1,lift:3}
+  };
+  const DENSITY = { pop:1, rock:1, hiphop:1, trap:0, rnb:0, jazz:2, blues:1, edm:2, house:2, techno:2, melodictechno:1, afrohouse:1, reggaeton:1, latin:2,
+    country:1, funk:2, gospel:0, metal:2, reggae:1, classical:2, lofi:0, afrobeats:2, cinematic:0 };
+  const CONTOURS = [[0,1,2,3,4,3,2,1],[0,0,1,2,2,3,4,5],[5,4,4,3,2,1,1,0],[0,2,1,3,2,4,3,1],
+                    [0,3,1,4,2,5,1,0],[2,2,3,2,2,1,2,2],[0,2,4,2,1,3,5,3],[0,4,1,5,2,4,0,3],
+                    [4,4,4,2,3,3,3,1],[0,0,4,4,3,2,1,0]];
+
+  // Deterministic random numbers (identical in the Swift and C++ engines).
+  function rng(seed) {
+    let a = seed >>> 0;
+    return n => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return (((t ^ (t >>> 14)) >>> 0) % n);
+    };
+  }
+  // Every genre × arpeggio × melody × song seed gives its own tune.
+  const songSeed = (gi, arp, melody, seed) =>
+    ((gi + 1) * 7919 + (arp + 2) * 31337 + (melody + 1) * 104729 + seed * 15485863) >>> 0;
+
+  function rhythmPool(id) {
+    const d = DENSITY[id] ?? 1;
+    const sparse = [0,1,2,3,4,5], medium = [6,7,8,9,10,11,12,13], dense = [14,15,16,17,18,19];
+    const generic = (d === 0 ? sparse.concat(medium.slice(0, 4)) : d === 1 ? medium.concat(sparse.slice(0, 3)) : dense.concat(medium.slice(3)))
+      .map(i => RHYTHMS[i]);
+    const own = GENRE_RHYTHMS[id] || [];
+    return own.concat(own, generic);   // genre hook rhythms count double
+  }
+
+  /// A hook-based melody: a 2-bar motif repeated in an A A' B A form, with the chorus (B) lifted higher,
+  /// strong beats landing on chord tones and the genre's own hook devices.
+  function melodyEvents(g, gi, pk, chords, arp, melody, seed, spc) {
+    const R = rng(songSeed(gi, arp, melody, seed));
+    const dev = DEVICES[g.id] || {};
+    const scale = new Set(SCALES[scaleFor(g, pk)].map(i => mod12(pk.tonic + i)));
+    const center = g.octave + 10, lo = center - 9, hi = center + 14;
+    const notes = []; for (let n = lo; n <= hi; n++) if (scale.has(mod12(n))) notes.push(n);
+    let base = 0; for (let i = 0; i < notes.length; i++) if (Math.abs(notes[i] - (center - 3)) < Math.abs(notes[base] - (center - 3))) base = i;
+    const pool = rhythmPool(g.id);
+    const rA = pool[(melody * 3 + R(pool.length)) % pool.length];
+    const rB = pool[(melody * 7 + 2 + R(pool.length)) % pool.length];
+    const cA = CONTOURS[(melody + R(CONTOURS.length)) % CONTOURS.length];
+    const cB = CONTOURS[(melody * 3 + 1 + R(CONTOURS.length)) % CONTOURS.length];
+    const lift = (dev.lift || 2), register = R(3) - 1;
+    const repHook = dev.rep && R(3) !== 0;          // first notes of the motif on one pitch
+    const sig = g.signatureNotes.map(o => mod12(pk.tonic + o));
+    const blue = [mod12(pk.tonic + 3), mod12(pk.tonic + 6), mod12(pk.tonic + 10)];
+    const events = []; const total = spc * chords.length;
+    let prev = -1;
+    const nearestChordTone = (n, chordPcs) => {
+      let best = n, bd = 99;
+      for (const m of notes) if (chordPcs.has(mod12(m)) && Math.abs(m - n) < bd) { bd = Math.abs(m - n); best = m; }
+      return best;
+    };
+    for (let b = 0; b < total / 16; b++) {
+      const ci = Math.floor(b * 16 / spc), chordPcs = pcs(chords[ci]);
+      const phrase = Math.floor(b / 2) % 4, inPhrase = b % 2;
+      const isB = phrase === 2, rhythm = isB ? rB : rA, contour = isB ? cB : cA;
+      const shift = register + (isB ? lift : 0) + (phrase === 1 && inPhrase === 1 ? -1 : 0);
+      const starts = []; for (let s = 0; s < 16; s++) if (rhythm[s] === "x") starts.push(s);
+      starts.forEach((s, k) => {
+        let e = s + 1; while (e < 16 && rhythm[e] === "-") e++;
+        const pos = inPhrase * 4 + Math.floor(s / 4);
+        let idx = Math.max(0, Math.min(notes.length - 1, base + contour[pos] + shift));
+        if (repHook && inPhrase === 0 && k > 0 && k < 3) idx = Math.max(0, Math.min(notes.length - 1, base + contour[0] + shift));
+        let n = notes[idx];
+        if (s % 8 === 0 || k === 0) n = nearestChordTone(n, chordPcs);
+        else if (dev.blue && R(5) === 0) {
+          const bn = [n - 1, n + 1, n - 2].find(m => blue.includes(mod12(m)) && m >= lo && m <= hi);
+          if (bn !== undefined) n = bn;
+        } else if (R(6) === 0) {
+          const near = notes.filter(m => sig.includes(mod12(m)) && Math.abs(m - n) <= 3);
+          if (near.length) n = near[R(near.length)];
+        }
+        // Chorus opening jumps an octave for a big lift.
+        if (dev.oct && isB && inPhrase === 0 && k === 0 && n + 12 <= hi + 5) n += 12;
+        if (n === prev && !(repHook && inPhrase === 0) && R(2) === 0) {
+          const j = notes.indexOf(n) + (R(2) ? 1 : -1); if (j >= 0 && j < notes.length) n = notes[j];
+        }
+        // Chromatic approach: a short note a semitone below the next strong-beat target.
+        const next = starts[k + 1];
+        if (dev.chrom && next !== undefined && next % 8 === 0 && e - s >= 2 && R(3) === 0) {
+          const target = nearestChordTone(notes[Math.max(0, Math.min(notes.length - 1, base + contour[inPhrase * 4 + Math.floor(next / 4)] + shift))], chordPcs);
+          const mid = s + Math.max(1, Math.floor((e - s) / 2));
+          events.push({ step: b * 16 + s, note: n, vel: 92, lane: 1 }, { step: b * 16 + mid, note: n, vel: 0, lane: 1 });
+          const ap = target - 1;
+          events.push({ step: b * 16 + mid, note: ap, vel: 78, lane: 1 }, { step: b * 16 + e >= total ? 0 : b * 16 + e, note: ap, vel: 0, lane: 1 });
+          prev = ap; return;
+        }
+        const start = b * 16 + s, stop = b * 16 + e;
+        const vel = (s % 4 === 0 ? 100 : 82) + R(9) - 4;
+        events.push({ step: start, note: n, vel, lane: 1 });
+        events.push({ step: stop >= total ? 0 : stop, note: n, vel: 0, lane: 1 });
+        prev = n;
+      });
+    }
+    return events;
+  }
+
+  /// Builds the genre-player loop. arp: -1 = genre rhythm, 0..29 = arpeggio. melody: -1 = none, 0..19.
+  function buildPattern(g, k, progIndex = 0, complexity = 1, arp = -1, melody = -1, seed = 0) {
     const pk = progressionKey(g, k);
     const p = g.progressions[Math.max(0, Math.min(progIndex, g.progressions.length - 1))];
     const chords = p.chords.map(rc => adjust(romanChord(rc, pk), complexity));
     const spc = 16 * Math.max(1, g.barsPerChord), total = spc * chords.length, events = [];
+    const arpSteps = arp >= 0 && arp < ARPEGGIOS.length ? ARPEGGIOS[arp][1] : null;
     let prev = [];
     chords.forEach((c, ci) => {
       const v = voicing(c, g.octave, prev, false); prev = v;
-      const arp = v.length <= 1 ? [0] : v.length === 2 ? [0,1] : v.length === 3 ? [0,2,1,2] : [0,2,1,3];
+      const ext = v.concat(v.map(n => n + 12)).slice(0, 8);
+      const arpOrder = v.length <= 1 ? [0] : v.length === 2 ? [0,1] : v.length === 3 ? [0,2,1,2] : [0,2,1,3];
       let bass = Math.floor(v[0]/12)*12 + c.root; while (bass + 12 >= v[0]) bass -= 12; if (bass < 24) bass += 12;
       const iv = Q[c.quality].iv, fifth = iv.includes(7) ? 7 : iv.includes(6) ? 6 : iv.includes(8) ? 8 : 7;
       let on = [], bOn = null, ai = 0;
+      const offAll = step => { on.forEach(n => events.push({ step, note: n, vel: 0, lane: 0 })); on = []; };
       for (let s = 0; s < spc; s++) {
-        const step = ci * spc + s, ch = g.chordRhythm[s % 16], bh = g.bassRhythm[s % 16];
-        if (ch === "x" || ch === "o") { on.forEach(n => events.push({step, note:n, vel:0})); on = v.slice(); v.forEach(n => events.push({step, note:n, vel: ch==="x"?104:78})); }
-        else if (ch === "a") { on.forEach(n => events.push({step, note:n, vel:0})); const n = v[arp[ai % arp.length]]; ai++; on = [n]; events.push({step, note:n, vel: ai % 4 === 1 ? 92 : 72}); }
-        else if (ch === ".") { on.forEach(n => events.push({step, note:n, vel:0})); on = []; }
-        if (bh === "x" || bh === "f" || bh === "o") { if (bOn !== null) events.push({step, note:bOn, vel:0}); const n = bh==="x" ? bass : bh==="f" ? bass+fifth : bass+12; bOn = n; events.push({step, note:n, vel: bh==="x"?100:84}); }
-        else if (bh === ".") { if (bOn !== null) events.push({step, note:bOn, vel:0}); bOn = null; }
+        const step = ci * spc + s, bh = g.bassRhythm[s % 16];
+        if (arpSteps) {
+          const ch = arpSteps[s % 16];
+          if (ch === "c") { offAll(step); on = v.slice(); v.forEach(n => events.push({ step, note: n, vel: s % 4 === 0 ? 100 : 80, lane: 0 })); }
+          else if (ch >= "0" && ch <= "9") { offAll(step); const n = ext[(+ch) % ext.length]; on = [n]; events.push({ step, note: n, vel: s % 4 === 0 ? 96 : 74, lane: 0 }); }
+          else if (ch === ".") offAll(step);
+        } else {
+          const ch = g.chordRhythm[s % 16];
+          if (ch === "x" || ch === "o") { offAll(step); on = v.slice(); v.forEach(n => events.push({ step, note: n, vel: ch === "x" ? 104 : 78, lane: 0 })); }
+          else if (ch === "a") { offAll(step); const n = v[arpOrder[ai % arpOrder.length]]; ai++; on = [n]; events.push({ step, note: n, vel: ai % 4 === 1 ? 92 : 72, lane: 0 }); }
+          else if (ch === ".") offAll(step);
+        }
+        if (bh === "x" || bh === "f" || bh === "o") { if (bOn !== null) events.push({ step, note: bOn, vel: 0, lane: 0 }); const n = bh === "x" ? bass : bh === "f" ? bass + fifth : bass + 12; bOn = n; events.push({ step, note: n, vel: bh === "x" ? 100 : 84, lane: 0 }); }
+        else if (bh === ".") { if (bOn !== null) events.push({ step, note: bOn, vel: 0, lane: 0 }); bOn = null; }
       }
       const end = (ci + 1) * spc, es = end === total ? 0 : end;
-      on.forEach(n => events.push({step: es, note:n, vel:0}));
-      if (bOn !== null) events.push({step: es, note:bOn, vel:0});
+      offAll(es);
+      if (bOn !== null) events.push({ step: es, note: bOn, vel: 0, lane: 0 });
     });
-    events.sort((a,b) => a.step === b.step ? ((a.vel===0) === (b.vel===0) ? 0 : a.vel===0 ? -1 : 1) : a.step - b.step);
+    if (melody >= 0) events.push(...melodyEvents(g, GENRES.indexOf(g), pk, chords, arp, melody % MELODY_COUNT, seed, spc));
+    events.sort((a, b) => a.step === b.step ? ((a.vel === 0) === (b.vel === 0) ? 0 : a.vel === 0 ? -1 : 1) : a.step - b.step);
     return { events, total, chords, spc };
   }
 
-  return { mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
-           GENRES, PIANOS, SCALE_NAMES, Engine, buildPattern, prefersFlats, pcs };
+  /// Chord voiced just below the melody note, with the root in the bass.
+  function geniusVoicing(c, melody) {
+    const out = [];
+    const tones = [...new Set(Q[c.quality].iv.map(i => mod12(c.root + i)))];
+    for (const pc of tones) {
+      let n = melody - 2; while (mod12(n) !== pc) n--;
+      if (n >= melody - 14 && n >= 28) out.push(n);
+    }
+    let b = melody - 17; while (mod12(b) !== c.root) b--;
+    if (b >= 24) out.push(b);
+    return [...new Set(out)].sort((x, y) => x - y);
+  }
+
+  return { geniusVoicing, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
+           GENRES, PIANOS, SCALE_NAMES, Engine, buildPattern, prefersFlats, pcs, ARPEGGIOS, MELODY_NAMES, MELODY_COUNT, rng };
 })();
 if (typeof module !== "undefined") module.exports = CP;

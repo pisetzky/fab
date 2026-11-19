@@ -20,6 +20,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "play", 1 }, "Genre Player", false));
     l.add(std::make_unique<AudioParameterInt>(ParameterID { "progression", 1 }, "Progressione", 0, 5, 0));
     l.add(std::make_unique<AudioParameterFloat>(ParameterID { "bpm", 1 }, "BPM", NormalisableRange<float>(40, 220, 1), 110));
+    StringArray arps { "Ritmo del genere" }, mels { "Nessuna" };
+    for (size_t i = 0; i < cp::arpeggios().size(); ++i) arps.add(String((int) i + 1) + ". " + String::fromUTF8(cp::arpeggios()[i].name));
+    for (size_t i = 0; i < cp::melodyNames().size(); ++i) mels.add(String((int) i + 1) + ". " + String::fromUTF8(cp::melodyNames()[i].c_str()));
+    l.add(std::make_unique<AudioParameterChoice>(ParameterID { "arp", 1 }, "Arpeggio", arps, 0));
+    l.add(std::make_unique<AudioParameterChoice>(ParameterID { "melody", 1 }, "Melodia", mels, 0));
+    l.add(std::make_unique<AudioParameterInt>(ParameterID { "song", 1 }, "Canzone", 0, 9999, 0));
+    l.add(std::make_unique<AudioParameterBool>(ParameterID { "genius", 1 }, "Modalita Genio", false));
     return l;
 }
 }
@@ -29,7 +36,10 @@ ChordPilotProcessor::ChordPilotProcessor()
       params(*this, nullptr, "ChordPilot", makeLayout()) {
     for (auto& a : held) a = 0;
     for (auto& a : patternNotes) a = 0;
+    for (auto& a : melodyNotes) a = 0;
+    pressedToSounding.fill(-1);
     rebuildPattern();
+    rebuildGeniusTable();
     startTimerHz(15);
 }
 
@@ -63,15 +73,30 @@ const juce::String ChordPilotProcessor::getProgramName(int index) {
 
 // Runs on the message thread: rebuild the genre-player loop when a musical setting changes.
 void ChordPilotProcessor::timerCallback() {
-    std::array<int, 6> now { genreIndex(), (int) params.getRawParameterValue("key")->load(),
+    std::array<int, 8> now { genreIndex(), (int) params.getRawParameterValue("key")->load(),
                              (int) params.getRawParameterValue("minor")->load(), (int) params.getRawParameterValue("complexity")->load(),
-                             (int) params.getRawParameterValue("progression")->load(), 0 };
+                             (int) params.getRawParameterValue("progression")->load(), (int) params.getRawParameterValue("arp")->load(),
+                             (int) params.getRawParameterValue("melody")->load(), (int) params.getRawParameterValue("song")->load() };
     int det = detectedKeyCode.load();
     if (now[0] != lastParamState[0]) {
         // New genre: adopt its typical tempo.
         if (lastParamState[0] >= 0)
             if (auto* p = params.getParameter("bpm")) p->setValueNotifyingHost(p->convertTo0to1((float) cp::genres()[(size_t) now[0]].bpm));
     }
+    // Genius mode: learn from what was played and refresh the lookup table.
+    {
+        int s1, n1, s2, n2; int ready = geniusFifo.getNumReady();
+        geniusFifo.prepareToRead(ready, s1, n1, s2, n2);
+        auto consume = [this](int v) {
+            if (v & 0x10000) geniusEngine.noteOn(v & 0x7f, 100);
+            else if (v & 0x20000) geniusEngine.commit(cp::makeChord((v >> 8) & 0xff, v & 0xff));
+        };
+        for (int i = 0; i < n1; ++i) consume(geniusFifoData[(size_t) (s1 + i)]);
+        for (int i = 0; i < n2; ++i) consume(geniusFifoData[(size_t) (s2 + i)]);
+        geniusFifo.finishedRead(n1 + n2);
+        if (n1 + n2 > 0) geniusDirty = 1;
+    }
+    if (geniusDirty || now != lastParamState) { rebuildGeniusTable(); geniusDirty = 0; }
     if (now != lastParamState || (now[1] == 0 && det != lastDetected)) {
         lastParamState = now; lastDetected = det;
         rebuildPattern();
@@ -81,8 +106,91 @@ void ChordPilotProcessor::timerCallback() {
 void ChordPilotProcessor::rebuildPattern() {
     const auto& g = cp::genres()[(size_t) juce::jlimit(0, (int) cp::genres().size() - 1, genreIndex())];
     int prog = juce::jlimit(0, (int) g.progressions.size() - 1, (int) params.getRawParameterValue("progression")->load());
-    auto p = std::make_shared<const cp::Pattern>(cp::buildPattern(g, playerKey(), prog, (int) params.getRawParameterValue("complexity")->load()));
+    auto p = std::make_shared<const cp::Pattern>(cp::buildPattern(g, playerKey(), prog, (int) params.getRawParameterValue("complexity")->load(),
+        (int) params.getRawParameterValue("arp")->load() - 1, (int) params.getRawParameterValue("melody")->load() - 1,
+        (int) params.getRawParameterValue("song")->load()));
     std::atomic_store(&pattern, p);
+}
+
+void ChordPilotProcessor::rebuildGeniusTable() {
+    const auto& gs = cp::genres();
+    int gi = juce::jlimit(0, (int) gs.size() - 1, genreIndex());
+    if (gi != lastGeniusGenre) { geniusEngine.genre = &gs[(size_t) gi]; geniusEngine.reset(); lastGeniusGenre = gi; }
+    geniusEngine.complexity = (int) params.getRawParameterValue("complexity")->load();
+    int k = (int) params.getRawParameterValue("key")->load();
+    bool minor = params.getRawParameterValue("minor")->load() > 0.5f;
+    geniusEngine.fixedKey = k == 0 ? std::nullopt : std::optional<cp::Key>(cp::Key { k - 1, minor });
+    auto table = std::make_shared<GeniusTable>();
+    for (int pc = 0; pc < 12; ++pc) {
+        auto g = geniusEngine.genius(60 + pc);
+        auto& e = (*table)[(size_t) pc];
+        e.shift = g.shift; e.root = g.chord.root; e.quality = g.chord.quality; e.numTones = 0;
+        for (int iv : cp::qualities()[(size_t) g.chord.quality].iv) {
+            int t = cp::mod12(g.chord.root + iv); bool dup = false;
+            for (int j = 0; j < e.numTones; ++j) dup |= e.tones[j] == t;
+            if (!dup && e.numTones < 6) e.tones[e.numTones++] = t;
+        }
+    }
+    std::atomic_store(&geniusTable, std::shared_ptr<const GeniusTable>(table));
+}
+
+void ChordPilotProcessor::geniusChordOff(int offset, juce::MidiBuffer& out) {
+    for (int i = 0; i < geniusCount; ++i) {
+        synth.noteOff(geniusNotes[i], 4);
+        out.addEvent(juce::MidiMessage::noteOff(3, geniusNotes[i]), offset);
+    }
+    geniusCount = 0; geniusNumTones = 0; geniusChordOn = false;
+}
+
+// User / host notes. In Genius mode each key becomes the closest fitting note, harmonised by the next chord.
+void ChordPilotProcessor::handleInput(const juce::MidiMessage& m, int offset, juce::MidiBuffer& out) {
+    const bool genius = params.getRawParameterValue("genius")->load() > 0.5f;
+    if (!genius || m.getChannel() == 16 || !(m.isNoteOn() || m.isNoteOff())) { handleMidi(m, offset, out, false); return; }
+    const int pressed = m.getNoteNumber();
+    if (m.isNoteOff()) {
+        int n = pressedToSounding[(size_t) pressed] >= 0 ? pressedToSounding[(size_t) pressed] : pressed;
+        pressedToSounding[(size_t) pressed] = -1;
+        for (int p = 0; p < 128; ++p) if (pressedToSounding[(size_t) p] == n) return;   // another key still holds it
+        handleMidi(juce::MidiMessage::noteOff(m.getChannel(), n), offset, out, false);
+        return;
+    }
+    auto table = std::atomic_load(&geniusTable);
+    if (!table) { handleMidi(m, offset, out, false); return; }
+    const auto& e = (*table)[(size_t) cp::mod12(pressed)];
+    const int n = juce::jlimit(0, 127, pressed + e.shift);
+    const long long now = sampleClock + offset;
+    bool fits = false; for (int i = 0; i < geniusNumTones; ++i) fits |= geniusTones[i] == cp::mod12(n);
+    if (!(geniusChordOn && fits && now - geniusChangedAt < (long long) (1.5 * sampleRate))) {
+        geniusChordOff(offset, out);
+        geniusCount = cp::geniusVoicing(e.tones, e.numTones, e.root, n, geniusNotes);
+        geniusNumTones = e.numTones; for (int i = 0; i < e.numTones; ++i) geniusTones[i] = e.tones[i];
+        const auto vel = (juce::uint8) juce::jlimit(1, 127, (int) (m.getVelocity() * 0.62f));
+        const bool synthOn = params.getRawParameterValue("synth")->load() > 0.5f;
+        for (int i = 0; i < geniusCount; ++i) {
+            if (synthOn) synth.noteOn(geniusNotes[i], vel, 4);
+            out.addEvent(juce::MidiMessage::noteOn(3, geniusNotes[i], vel), offset);   // chords on MIDI channel 3
+        }
+        geniusChordOn = true; geniusChangedAt = now;
+        int s1, n1, s2, n2; geniusFifo.prepareToWrite(1, s1, n1, s2, n2);
+        if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x20000 | (e.root << 8) | e.quality; geniusFifo.finishedWrite(1); }
+    }
+    { int s1, n1, s2, n2; geniusFifo.prepareToWrite(1, s1, n1, s2, n2);
+      if (n1 > 0) { geniusFifoData[(size_t) s1] = 0x10000 | n; geniusFifo.finishedWrite(1); } }
+    pressedToSounding[(size_t) pressed] = n;
+    lastNoteAt = now;
+    if (held[(size_t) n] > 0) handleMidi(juce::MidiMessage::noteOff(m.getChannel(), n), offset, out, false);
+    handleMidi(juce::MidiMessage::noteOn(m.getChannel(), n, m.getVelocity()), offset, out, false);
+}
+
+void ChordPilotProcessor::newSong() {
+    juce::Random r;
+    const auto& g = cp::genres()[(size_t) genreIndex()];
+    auto set = [this](const char* id, float v) { if (auto* p = params.getParameter(id)) p->setValueNotifyingHost(p->convertTo0to1(v)); };
+    set("progression", (float) r.nextInt((int) g.progressions.size()));
+    set("arp", (float) (1 + r.nextInt((int) cp::arpeggios().size())));
+    set("melody", (float) (1 + r.nextInt(cp::kMelodyCount)));
+    set("song", (float) (1 + r.nextInt(9999)));
+    set("play", 1.0f);
 }
 
 void ChordPilotProcessor::playChord(const std::vector<int>& notes, bool on) {
@@ -101,11 +209,13 @@ void ChordPilotProcessor::prepareToPlay(double sr, int samplesPerBlock) {
 
 void ChordPilotProcessor::handleMidi(const juce::MidiMessage& m, int offset, juce::MidiBuffer& out, bool fromPattern) {
     const bool suggestionLane = !fromPattern && m.getChannel() == 16;
-    const int lane = fromPattern ? 1 : (suggestionLane ? 2 : 0);
+    const bool melodyLane = fromPattern && m.getChannel() == 2;   // genre-player melody is sent on MIDI channel 2
+    const int lane = fromPattern ? (melodyLane ? 3 : 1) : (suggestionLane ? 2 : 0);
+    auto& patArray = melodyLane ? melodyNotes : patternNotes;
     const bool synthOn = params.getRawParameterValue("synth")->load() > 0.5f;
     if (m.isNoteOn()) {
         int n = m.getNoteNumber();
-        if (fromPattern) patternNotes[(size_t) n] = (uint8_t) m.getVelocity();
+        if (fromPattern) patArray[(size_t) n] = (uint8_t) m.getVelocity();
         else if (!suggestionLane) {
             held[(size_t) n] = (uint8_t) std::max<int>(1, m.getVelocity());
             int s1, n1, s2, n2; noteFifo.prepareToWrite(1, s1, n1, s2, n2);
@@ -114,7 +224,7 @@ void ChordPilotProcessor::handleMidi(const juce::MidiMessage& m, int offset, juc
         if (synthOn) synth.noteOn(n, m.getVelocity(), lane);
     } else if (m.isNoteOff()) {
         int n = m.getNoteNumber();
-        if (fromPattern) patternNotes[(size_t) n] = 0; else if (!suggestionLane) held[(size_t) n] = 0;
+        if (fromPattern) patArray[(size_t) n] = 0; else if (!suggestionLane) held[(size_t) n] = 0;
         synth.noteOff(n, lane);
     } else if (m.isSustainPedalOn() || m.isSustainPedalOff()) {
         synth.setSustain(m.isSustainPedalOn());
@@ -126,8 +236,10 @@ void ChordPilotProcessor::handleMidi(const juce::MidiMessage& m, int offset, juc
 }
 
 void ChordPilotProcessor::releasePattern(int offset, juce::MidiBuffer& out) {
-    for (int n = 0; n < 128; ++n)
+    for (int n = 0; n < 128; ++n) {
         if (patternNotes[(size_t) n] > 0) handleMidi(juce::MidiMessage::noteOff(1, n), offset, out, true);
+        if (melodyNotes[(size_t) n] > 0) handleMidi(juce::MidiMessage::noteOff(2, n), offset, out, true);
+    }
 }
 
 void ChordPilotProcessor::fireStep(int step, const cp::Pattern& p, int offset, juce::MidiBuffer& out) {
@@ -136,8 +248,10 @@ void ChordPilotProcessor::fireStep(int step, const cp::Pattern& p, int offset, j
     while (cursor < p.events.size() && p.events[cursor].step < step) ++cursor;
     while (cursor < p.events.size() && p.events[cursor].step == step) {
         const auto& e = p.events[cursor++];
-        if (e.vel > 0) handleMidi(juce::MidiMessage::noteOn(1, e.note, (juce::uint8) e.vel), offset, out, true);
-        else if (patternNotes[(size_t) e.note] > 0) handleMidi(juce::MidiMessage::noteOff(1, e.note), offset, out, true);
+        const int ch = e.lane == 1 ? 2 : 1;
+        auto& arr = e.lane == 1 ? melodyNotes : patternNotes;
+        if (e.vel > 0) handleMidi(juce::MidiMessage::noteOn(ch, e.note, (juce::uint8) e.vel), offset, out, true);
+        else if (arr[(size_t) e.note] > 0) handleMidi(juce::MidiMessage::noteOff(ch, e.note), offset, out, true);
     }
 }
 
@@ -212,10 +326,18 @@ void ChordPilotProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         int next = std::min(nextEvent, nextStepOff);
         if (next > done) { synth.render(L, R, done, next); done = next; }
         if (next >= n) break;
-        if (it != midi.cend() && nextEvent == next) { handleMidi((*it).getMessage(), next, out, false); ++it; }
+        if (it != midi.cend() && nextEvent == next) { handleInput((*it).getMessage(), next, out); ++it; }
         if (stepDue && nextStepOff == next) { fireStep((int) (nextStep % audioPattern->total), *audioPattern, next, out); ++nextStep; }
     }
-    for (; it != midi.cend(); ++it) handleMidi((*it).getMessage(), n - 1, out, false);
+    for (; it != midi.cend(); ++it) handleInput((*it).getMessage(), n - 1, out);
+    // Genius chord fades out 1.8 s after the last key is released.
+    if (geniusChordOn) {
+        bool anyHeld = false; for (auto& h : held) anyHeld |= h.load() > 0;
+        bool genius = params.getRawParameterValue("genius")->load() > 0.5f;
+        if (!genius || (!anyHeld && sampleClock + n - lastNoteAt > (long long) (1.8 * sampleRate))) geniusChordOff(n - 1, out);
+        else if (anyHeld) lastNoteAt = sampleClock + n;
+    }
+    sampleClock += n;
     if (isPlaying) stepPhase = phaseEnd;
 
     const float target = params.getRawParameterValue("volume")->load();

@@ -4,7 +4,7 @@
 namespace aurora {
 const juce::Colour night { 0xff050b1a }, deep { 0xff0b1736 }, panel { 0xa0101e40 }, line { 0x298cbeff },
     fg { 0xffeaf2ff }, muted { 0xff9fb2d6 }, green { 0xff3dffb0 }, teal { 0xff19d3c5 }, cyan { 0xff5cd6ff },
-    violet { 0xff8e6cff }, magenta { 0xffe05bff };
+    violet { 0xff8e6cff }, magenta { 0xffe05bff }, pink { 0xffff6fb5 };
 }
 
 class AuroraLookAndFeel : public juce::LookAndFeel_V4 {
@@ -21,7 +21,7 @@ public:
     explicit KeyboardView(ChordPilotProcessor& p) : proc(p) {}
     int lowest = 48, octaves = 3;
     std::map<int, cp::Highlight> highlights;
-    std::set<int> held, pattern;
+    std::set<int> held, pattern, melody;
     bool italian = true, showScale = true, flats = false;
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
@@ -61,22 +61,22 @@ private:
     AuroraLookAndFeel lnf;
     cp::Engine engine;
     cp::Result result;
-    std::set<int> held, pattern;
+    std::set<int> held, pattern, melody;
     std::optional<cp::Chord> lastCommitted;
     juce::uint32 heldChangedAt = 0;
     int tick = 0;
 
-    juce::ComboBox genreBox, pianoBox, keyBox, complexityBox, progressionBox;
+    juce::ComboBox genreBox, pianoBox, keyBox, complexityBox, progressionBox, arpBox, melodyBox;
     juce::ToggleButton minorToggle { "Minore" }, synthToggle { "Piano interno" }, syncToggle { "Sync DAW" }, italianToggle { "Do Re Mi" };
-    juce::TextButton playButton { "Genre Player" }, octDown { "<" }, octUp { ">" };
+    juce::TextButton playButton { "Genre Player" }, newSongButton { "Nuova canzone" }, geniusButton { "Modalita Genio" }, octDown { "<" }, octUp { ">" };
     juce::Slider bpmSlider;
     std::array<SuggestionCard, 6> cards;
     KeyboardView keyboard;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
-    std::unique_ptr<CA> genreA, pianoA, keyA, cxA, progA;
-    std::unique_ptr<BA> minorA, synthA, syncA, playA;
+    std::unique_ptr<CA> genreA, pianoA, keyA, cxA, progA, arpA, melA;
+    std::unique_ptr<BA> minorA, synthA, syncA, playA, geniusA;
     std::unique_ptr<SA> bpmA;
     juce::Rectangle<int> statusArea, playerArea;
     float auroraPhase = 0;

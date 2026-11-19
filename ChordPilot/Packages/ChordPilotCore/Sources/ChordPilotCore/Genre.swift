@@ -50,7 +50,7 @@ public struct Genre: Identifiable, Hashable {
 }
 
 public extension Genre {
-    /// The 20 genres offered in the drop-down menu.
+    /// The 23 genres offered in the drop-down menu.
     static let all: [Genre] = [
         Genre(id: "pop", name: "Pop", emoji: "🎤", prefersMinor: false, defaultTonic: 0, bpm: 110,
               majorScale: .major, minorScale: .naturalMinor,
@@ -118,6 +118,27 @@ public extension Genre {
                              .init("ii7 V7 Imaj7"), .init("i7 IV7", weight: 1.5)],
               signatureNotes: [9, 2], chordRhythm: "..x...x...x...x.", bassRhythm: "..x...x...x...x.",
               barsPerChord: 1, colorHex: 0x2DFFA8, octave: 60),
+
+        Genre(id: "techno", name: "Techno", emoji: "🔊", prefersMinor: true, defaultTonic: 9, bpm: 130,
+              majorScale: .mixolydian, minorScale: .phrygian,
+              progressions: [.init("i bII", weight: 2), .init("i bVII", weight: 2), .init("i iv", weight: 1.5),
+                             .init("i5 bVI5", weight: 1.2)],
+              signatureNotes: [1, 7], chordRhythm: "x..x..x...x..x..", bassRhythm: "..xx..xx..xx..xx",
+              barsPerChord: 2, colorHex: 0x19D3C5, octave: 57),
+
+        Genre(id: "melodictechno", name: "Melodic Techno", emoji: "🌌", prefersMinor: true, defaultTonic: 2, bpm: 124,
+              majorScale: .lydian, minorScale: .naturalMinor,
+              progressions: [.init("i bVI bIII bVII", weight: 3), .init("i bVII bVI bVII", weight: 2),
+                             .init("iadd9 bVImaj7 bIIImaj7 bVII", weight: 2), .init("i v bVI iv", weight: 1.5)],
+              signatureNotes: [2, 7], chordRhythm: "aaaaaaaaaaaaaaaa", bassRhythm: "..x...x...x...x.",
+              barsPerChord: 2, colorHex: 0x8E6CFF, octave: 60),
+
+        Genre(id: "afrohouse", name: "Melodic Afro House", emoji: "🥁", prefersMinor: true, defaultTonic: 9, bpm: 122,
+              majorScale: .major, minorScale: .dorian,
+              progressions: [.init("i bVII bVI bVII", weight: 2.5), .init("i iv bVII bIII", weight: 2),
+                             .init("i7 iv7 bVIImaj7", weight: 1.5), .init("i bVI bVII", weight: 1.5)],
+              signatureNotes: [9, 2], chordRhythm: "..x..x..x..x.x..", bassRhythm: "x..x...x..x.....",
+              barsPerChord: 1, colorHex: 0x3DFFB0, octave: 60),
 
         Genre(id: "reggaeton", name: "Reggaeton", emoji: "🌴", prefersMinor: true, defaultTonic: 4, bpm: 95,
               majorScale: .major, minorScale: .naturalMinor,

@@ -3,9 +3,9 @@ import XCTest
 
 final class ChordPilotCoreTests: XCTestCase {
 
-    func testTwentyGenres() {
-        XCTAssertEqual(Genre.all.count, 20)
-        XCTAssertEqual(Set(Genre.all.map { $0.id }).count, 20)
+    func testGenres() {
+        XCTAssertEqual(Genre.all.count, 23)
+        XCTAssertEqual(Set(Genre.all.map { $0.id }).count, 23)
     }
 
     func testTenPianos() {
@@ -99,10 +99,47 @@ final class ChordPilotCoreTests: XCTestCase {
                 XCTAssertTrue(p.events.allSatisfy { $0.step >= 0 && $0.step < p.totalSteps }, g.name)
                 XCTAssertTrue(p.events.allSatisfy { $0.note >= 21 && $0.note <= 108 }, g.name)
                 // Every note-on must eventually be turned off (balanced loop).
-                var balance = [Int](repeating: 0, count: 128)
-                for e in p.events { balance[Int(e.note)] += e.velocity > 0 ? 1 : -1 }
+                var balance = [Int](repeating: 0, count: 256)
+                for e in p.events { balance[Int(e.lane) * 128 + Int(e.note)] += e.velocity > 0 ? 1 : -1 }
                 XCTAssertTrue(balance.allSatisfy { $0 == 0 }, "\(g.name) unbalanced pattern")
             }
+        }
+    }
+
+    func testArpeggiosAndMelodies() {
+        XCTAssertEqual(Arpeggios.all.count, 30)
+        XCTAssertEqual(Melodies.names.count, 30)
+        XCTAssertTrue(Arpeggios.all.allSatisfy { $0.steps.count == 16 })
+        var r = SongRandom(12345)
+        // Same numbers as the web and desktop engines.
+        XCTAssertEqual([r.next(1000), r.next(1000), r.next(1000), r.next(1000)], [869, 944, 450, 552])
+        for g in Genre.all {
+            for arp in stride(from: -1, to: 30, by: 5) {
+                for m in -1..<30 {
+                    let p = GenrePatternBuilder.build(genre: g, key: g.defaultKey, arpeggio: arp, melody: m, seed: 7)
+                    var bal = [Int: Int]()
+                    for e in p.events {
+                        XCTAssertTrue(e.step >= 0 && e.step < p.totalSteps)
+                        bal[Int(e.lane) * 1000 + Int(e.note), default: 0] += e.velocity > 0 ? 1 : -1
+                    }
+                    XCTAssertTrue(bal.values.allSatisfy { $0 == 0 }, "\(g.name) arp \(arp) melody \(m)")
+                }
+            }
+        }
+        // Pop, arpeggio 1, melody 1, song 0 matches the other engines note for note.
+        let pop = GenrePatternBuilder.build(genre: Genre.byID("pop"), key: Genre.byID("pop").defaultKey, arpeggio: 0, melody: 0, seed: 0)
+        let first = pop.events.filter { $0.lane == 1 && $0.velocity > 0 }.prefix(4).map { Int($0.note) }
+        XCTAssertEqual(first, [72, 72, 69, 72])
+    }
+
+    func testGeniusMode() {
+        let e = SuggestionEngine(genre: Genre.byID("pop"))
+        e.fixedKey = Key(tonic: 0, isMinor: false)
+        for n in [61, 66, 63, 70, 68, 61, 66, 59] {
+            let g = e.genius(note: n)
+            XCTAssertTrue([0, 2, 4, 5, 7, 9, 11].contains(mod12(g.note)))
+            XCTAssertTrue(g.chord.pitchClasses.contains(mod12(g.note)))
+            e.registerNoteOn(g.note); e.commit(chord: g.chord)
         }
     }
 

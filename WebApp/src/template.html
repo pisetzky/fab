@@ -22,6 +22,7 @@
   --cyan: #5cd6ff;       /* melody notes */
   --violet: #8e6cff;     /* alternative chords */
   --magenta: #e05bff;    /* genre player */
+  --pink: #ff6fb5;       /* genre player melody */
   --white-key: #eef4ff;
   --black-key: #0a1022;
   --font-display: "Space Grotesk", "Avenir Next", system-ui, sans-serif;
@@ -55,6 +56,13 @@ body {
   border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); pointer-events: none; }
 .field.genre { border-color: rgba(61,255,176,0.45); }
 .field.piano { border-color: rgba(142,108,255,0.55); }
+.field.arp { border-color: rgba(25,211,197,0.5); }
+.field.mel { border-color: rgba(255,111,181,0.55); }
+.btn.genius[aria-pressed="true"] { background: linear-gradient(135deg, var(--green), var(--cyan)); color: #022018; border: 0; box-shadow: 0 0 22px rgba(61,255,176,0.55); }
+.genius-on #kb { box-shadow: 0 0 40px rgba(61,255,176,0.45), inset 0 6px 10px rgba(0,0,0,0.35); }
+.btn.song { background: linear-gradient(135deg, rgba(255,111,181,0.35), rgba(142,108,255,0.35)); border-color: rgba(255,111,181,0.6); }
+.key.mel::after { content: ""; position: absolute; left: 4px; right: 4px; top: 13px; height: 6px; border-radius: 3px; background: var(--pink); z-index: 3; box-shadow: 0 0 10px var(--pink); }
+.player .song { margin-left: auto; color: var(--pink); font-weight: 700; }
 .seg { display: flex; height: 38px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); padding: 3px; }
 .seg button { border: 0; background: transparent; color: var(--muted); font: 600 13px var(--font-body); padding: 0 12px; border-radius: 999px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: rgba(61,255,176,0.18); color: var(--fg); }
@@ -64,6 +72,7 @@ body {
 .btn.play[aria-pressed="true"] { background: linear-gradient(135deg, var(--magenta), var(--violet)); color: #fff; }
 .bpm { font-variant-numeric: tabular-nums; min-width: 72px; text-align: center; font-weight: 600; }
 .spacer { flex: 1; }
+.grp { display: inline-flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
 .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
 .toggle input { accent-color: var(--green); width: 16px; height: 16px; }
 
@@ -153,12 +162,18 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     <div class="seg" role="group" aria-label="Complessità accordi">
       <button type="button" data-cx="0">Semplici</button><button type="button" data-cx="1">Del genere</button><button type="button" data-cx="2">Ricchi</button>
     </div>
+    <div class="field arp"><label for="arp">Arpeggio</label><select id="arp"></select></div>
+    <div class="field mel"><label for="melody">Melodia</label><select id="melody"></select></div>
+    <button class="btn genius" id="genius" type="button" aria-pressed="false" title="Ogni tasto diventa la nota giusta, con l'accordo successivo">🧠 Modalità Genio</button>
+    <button class="btn song" id="newSong" type="button" title="Cambia progressione, arpeggio e melodia">🎲 Nuova canzone</button>
     <span class="spacer"></span>
+    <span class="grp">
     <button class="btn play" id="play" type="button" aria-pressed="false">▶ Genre Player</button>
     <button class="btn" id="bpmDown" type="button" aria-label="BPM meno">−</button>
     <span class="bpm" id="bpm">110 BPM</span>
     <button class="btn" id="bpmUp" type="button" aria-label="BPM più">+</button>
     <button class="btn" id="more" type="button" aria-label="Impostazioni e installazione">⚙︎</button>
+    </span>
   </div>
 
   <div class="status">
@@ -170,6 +185,7 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
       <span><i style="background:var(--violet)"></i>Alternative</span>
       <span><i style="background:var(--cyan)"></i>Melodia</span>
       <span><i style="background:var(--magenta)"></i>Genre Player</span>
+      <span><i style="background:var(--pink)"></i>Melodia del Player</span>
     </div>
   </div>
 
@@ -222,13 +238,15 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     genre: Math.min(19, store.get("genre", 0)), piano: Math.min(9, store.get("piano", 0)),
     key: store.get("key", 0), complexity: store.get("cx", 1), italian: store.get("it", true),
     hints: store.get("hints", true), octaves: store.get("oct", 3), low: store.get("low", 48),
-    prog: 0, bpm: CP.GENRES[0].bpm, playing: false, midiOut: true
+    prog: 0, bpm: CP.GENRES[0].bpm, playing: false, midiOut: true,
+    arp: store.get("arp", -1), melody: store.get("mel", -1), seed: store.get("seed", 0), genius: store.get("genius", false)
   };
   state.bpm = CP.GENRES[state.genre].bpm;
   const engine = new CP.Engine(CP.GENRES[state.genre]);
   engine.complexity = state.complexity;
   const held = new Set();            // notes held by the musician
-  const patternOn = new Set();       // notes sounding from the genre player
+  const patternOn = new Set();       // accompaniment notes sounding from the genre player
+  const melodyOn = new Set();        // melody notes sounding from the genre player
   let result = null, stableTimer = null, lastCommitted = null;
 
   const names = () => state.italian ? CP.ITALIAN : null;
@@ -335,18 +353,44 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
   }
 
   // ---------- Playing ----------
-  function noteDown(n, vel, echo = true) {
+  // Genius mode state: pressed key → sounding note, and the automatic chord under the melody.
+  const pressedToSounding = new Map();
+  let geniusChord = null, geniusNotes = [], geniusAt = 0, geniusRelease = null;
+  function geniusChordOff() {
+    geniusNotes.forEach(x => { voiceOff(x, 4); sendMIDI([0x82, x, 0]); }); geniusNotes = []; geniusChord = null;
+  }
+  function noteDown(pressed, vel, echo = true) {
     audio();
+    let n = pressed;
+    if (state.genius) {
+      const g = engine.genius(pressed);
+      n = g.note;
+      const now = performance.now();
+      clearTimeout(geniusRelease);
+      const keep = geniusChord && CP.pcs(geniusChord).has(CP.mod12(n)) && now - geniusAt < 1500;
+      if (!keep) {
+        geniusChordOff();
+        geniusChord = g.chord; geniusAt = now;
+        geniusNotes = CP.geniusVoicing(g.chord, n);
+        geniusNotes.forEach(x => { voiceOn(x, Math.round(vel * 0.62), 4); sendMIDI([0x92, x, Math.round(vel * 0.62)]); });
+        engine.commit(g.chord); lastCommitted = g.chord;
+      }
+      pressedToSounding.set(pressed, n);
+    }
+    if (held.has(n)) voiceOff(n, 0, undefined, 0.02);
     voiceOn(n, vel, 0);
-    if (echo) sendMIDI([0x90, n, vel]);
+    if (echo || state.genius) sendMIDI([0x90, n, vel]);
     held.add(n); engine.noteOn(n, vel);
     changed();
   }
-  function noteUp(n, echo = true) {
-    if (!held.has(n)) return;
+  function noteUp(pressed, echo = true) {
+    const n = pressedToSounding.has(pressed) ? pressedToSounding.get(pressed) : pressed;
+    pressedToSounding.delete(pressed);
+    if (!held.has(n) || [...pressedToSounding.values()].includes(n)) return;
     held.delete(n);
     if (sustain) sustained.add(n); else voiceOff(n, 0);
-    if (echo) sendMIDI([0x80, n, 0]);
+    if (echo || state.genius) sendMIDI([0x80, n, 0]);
+    if (state.genius && held.size === 0) { clearTimeout(geniusRelease); geniusRelease = setTimeout(geniusChordOff, 1800); }
     changed();
   }
   function changed() {
@@ -373,15 +417,19 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
   function rebuildPattern() {
     const g = CP.GENRES[state.genre];
     const k = engine.fixedKey || (result ? result.key : { tonic: g.defaultTonic, minor: g.prefersMinor });
-    if (state.playing) { patternOn.forEach(n => { voiceOff(n, 1); sendMIDI([0x80, n, 0]); }); patternOn.clear(); }
-    pattern = CP.buildPattern(g, k, state.prog, state.complexity);
+    if (state.playing) releasePlayerNotes();
+    pattern = CP.buildPattern(g, k, state.prog, state.complexity, state.arp, state.melody, state.seed);
     renderPlayer();
   }
   function stopPattern() {
     clearInterval(timer); timer = null;
-    patternOn.forEach(n => { voiceOff(n, 1); sendMIDI([0x80, n, 0]); }); patternOn.clear();
+    releasePlayerNotes();
     state.playing = false; $("play").setAttribute("aria-pressed", "false"); $("play").textContent = "▶ Genre Player";
     renderKeys(); renderPlayer();
+  }
+  function releasePlayerNotes() {
+    patternOn.forEach(n => { voiceOff(n, 1); sendMIDI([0x80, n, 0]); }); patternOn.clear();
+    melodyOn.forEach(n => { voiceOff(n, 3); sendMIDI([0x81, n, 0]); }); melodyOn.clear();
   }
   function startPattern() {
     audio(); rebuildPattern();
@@ -395,12 +443,17 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
       const s = nextStep % pattern.total, t = nextTime;
       for (const e of pattern.events) {
         if (e.step !== s) continue;
-        if (e.vel > 0) voiceOn(e.note, e.vel, 1, t); else voiceOff(e.note, 1, t);
+        const lane = e.lane === 1 ? 3 : 1;
+        if (e.vel > 0) voiceOn(e.note, e.vel, lane, t); else voiceOff(e.note, lane, t);
       }
       const delay = Math.max(0, (t - ctx.currentTime) * 1000);
       const evs = pattern.events.filter(e => e.step === s);
       setTimeout(() => {
-        evs.forEach(e => { if (e.vel > 0) { patternOn.add(e.note); sendMIDI([0x90, e.note, e.vel]); } else { patternOn.delete(e.note); sendMIDI([0x80, e.note, 0]); } });
+        // Accompaniment on MIDI channel 1, melody on channel 2 (two separate tracks in a DAW).
+        evs.forEach(e => {
+          const set = e.lane === 1 ? melodyOn : patternOn, ch = e.lane === 1 ? 1 : 0;
+          if (e.vel > 0) { set.add(e.note); sendMIDI([0x90 | ch, e.note, e.vel]); } else { set.delete(e.note); sendMIDI([0x80 | ch, e.note, 0]); }
+        });
         chordIdx = Math.floor(s / pattern.spc);
         renderKeys(); renderPlayer();
       }, delay);
@@ -444,10 +497,15 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
       s.className = "ch" + (state.playing && i === chordIdx ? " on" : "");
       s.textContent = cName(c); el.appendChild(s);
     });
+    const song = document.createElement("span"); song.className = "song";
+    const parts = [state.arp >= 0 ? "Arpeggio " + CP.ARPEGGIOS[state.arp][0] : "Ritmo " + CP.GENRES[state.genre].name];
+    if (state.melody >= 0) parts.push("Melodia " + (state.melody + 1) + " · " + CP.MELODY_NAMES[state.melody]);
+    if (state.seed) parts.push("Canzone #" + state.seed);
+    song.textContent = parts.join("  ·  "); el.appendChild(song);
   }
   function rebuildPatternSilently() {
     const g = CP.GENRES[state.genre];
-    pattern = CP.buildPattern(g, engine.fixedKey || { tonic: g.defaultTonic, minor: g.prefersMinor }, state.prog, state.complexity);
+    pattern = CP.buildPattern(g, engine.fixedKey || { tonic: g.defaultTonic, minor: g.prefersMinor }, state.prog, state.complexity, state.arp, state.melody, state.seed);
   }
 
   // Keyboard
@@ -480,6 +538,7 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
       if (el.dataset.role !== role) el.dataset.role = role;
       el.classList.toggle("held", held.has(n));
       el.classList.toggle("pat", patternOn.has(n));
+      el.classList.toggle("mel", melodyOn.has(n));
       const show = CP.mod12(n) === 0 || (h && h.role === 4) || held.has(n);
       const txt = show ? noteName(n, flats) + (CP.mod12(n) === 0 ? String(Math.floor(n / 12) - 1) : "") : "";
       const lbl = el.lastChild; if (lbl.textContent !== txt) lbl.textContent = txt;
@@ -526,6 +585,10 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
   // ---------- Controls ----------
   CP.GENRES.forEach((g, i) => $("genre").add(new Option(`${g.emoji} ${g.name}`, i)));
   CP.PIANOS.forEach((p, i) => $("piano").add(new Option(`${p.emoji} ${p.name}`, i)));
+  $("arp").add(new Option("Ritmo del genere", -1));
+  CP.ARPEGGIOS.forEach(([name], i) => $("arp").add(new Option((i + 1) + ". " + name, i)));
+  $("melody").add(new Option("Nessuna", -1));
+  CP.MELODY_NAMES.forEach((name, i) => $("melody").add(new Option((i + 1) + ". " + name, i)));
   $("key").add(new Option("✨ Auto", 0));
   for (let pc = 0; pc < 12; pc++) { $("key").add(new Option(CP.ITALIAN[pc] + " / " + CP.SHARPS[pc], pc + 1)); $("key").add(new Option(CP.ITALIAN[pc] + " minore / " + CP.SHARPS[pc] + "m", -(pc + 1))); }
   function fillProg() {
@@ -535,6 +598,24 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
   }
   function applyKey() { engine.fixedKey = state.key === 0 ? null : { tonic: Math.abs(state.key) - 1, minor: state.key < 0 }; }
   $("genre").value = state.genre; $("piano").value = state.piano; $("key").value = state.key;
+  $("arp").value = state.arp; $("melody").value = state.melody;
+  const paintGenius = () => { $("genius").setAttribute("aria-pressed", String(state.genius)); document.body.classList.toggle("genius-on", state.genius); };
+  paintGenius();
+  $("genius").addEventListener("click", () => { state.genius = !state.genius; store.set("genius", state.genius); if (!state.genius) geniusChordOff(); paintGenius(); });
+  $("arp").addEventListener("change", e => { state.arp = +e.target.value; store.set("arp", state.arp); afterChange(); });
+  $("melody").addEventListener("change", e => { state.melody = +e.target.value; store.set("mel", state.melody); afterChange(); });
+  // A completely different song: new progression, arpeggio, melody and variation.
+  $("newSong").addEventListener("click", () => {
+    const g = CP.GENRES[state.genre], r = CP.rng((Date.now() ^ (state.seed * 2654435761)) >>> 0);
+    state.prog = r(g.progressions.length); state.arp = r(30); state.melody = r(CP.MELODY_COUNT); state.seed = 1 + r(9999);
+    $("arp").value = state.arp; $("melody").value = state.melody;
+  const paintGenius = () => { $("genius").setAttribute("aria-pressed", String(state.genius)); document.body.classList.toggle("genius-on", state.genius); };
+  paintGenius();
+  $("genius").addEventListener("click", () => { state.genius = !state.genius; store.set("genius", state.genius); if (!state.genius) geniusChordOff(); paintGenius(); }); $("prog").value = state.prog;
+    store.set("arp", state.arp); store.set("mel", state.melody); store.set("seed", state.seed);
+    afterChange();
+    if (!state.playing) startPattern();
+  });
   $("italian").checked = state.italian; $("hints").checked = state.hints; $("octaves").value = state.octaves;
   applyKey(); fillProg();
   const segBtns = [...document.querySelectorAll(".seg button")];
