@@ -452,23 +452,6 @@ Engine::GeniusChoice Engine::genius(int note) {
     return { m, ch, m - note };
 }
 
-DrumGroove drumGroove(const std::string& id) {
-    static const std::map<std::string, DrumGroove> d = {
-        {"pop",{"x.......x.x.....","....x.......x...","x.x.x.x.x.x.x.x."}}, {"rock",{"x.....x.x.......","....x.......x...","x.x.x.x.x.x.x.x."}},
-        {"hiphop",{"x......x..x.....","....x.......x...","x.x.x.x.x.x.x.x."}}, {"trap",{"x.......x..x....","........x.......","x.x.xxx.x.x.x.xx"}},
-        {"rnb",{"x......x..x.....","....x.......x...","x.x.x.x.x.x.x.x."}}, {"jazz",{"x.......x.......","......x.......x.","x..xx..xx..xx..x"}},
-        {"blues",{"x.....x.x.....x.","....x.......x...","x..xx..xx..xx..x"}}, {"edm",{"x...x...x...x...","....x.......x...","..x...x...x...x."}},
-        {"house",{"x...x...x...x...","....x.......x...","..x...x...x...x."}}, {"techno",{"x...x...x...x...","....x.......x...","xxx.xxx.xxx.xxx."}},
-        {"melodictechno",{"x...x...x...x...","....x.......x...","..x...x...x...x."}}, {"afrohouse",{"x...x...x...x...","...x..x....x..x.","x.xx.xx.x.xx.xx."}},
-        {"reggaeton",{"x...x...x...x...","...x..x....x..x.","x.x.x.x.x.x.x.x."}}, {"latin",{"x..x....x..x....","...x..x....x.x..","x.x.x.x.x.x.x.x."}},
-        {"country",{"x.......x.......","....x.......x...","x.x.x.x.x.x.x.x."}}, {"funk",{"x..x..x...x.....","....x..x.x..x...","xxxxxxxxxxxxxxxx"}},
-        {"gospel",{"x......x..x.....","....x.......x...","x.x.x.x.x.x.x.x."}}, {"metal",{"xxxxxxxxxxxxxxxx","....x.......x...","x.x.x.x.x.x.x.x."}},
-        {"reggae",{"........x.......","........x.......","..x...x...x...x."}}, {"classical",{"","",""}},
-        {"lofi",{"x.......x.x.....","....x.......x...","x.x.x.x.x.x.x.x."}}, {"afrobeats",{"x..x..x.x.......","....x.......x...","x.xx.xx.x.xx.xx."}},
-        {"cinematic",{"x.......x.......","",""}} };
-    auto it = d.find(id); return it == d.end() ? DrumGroove { "", "", "" } : it->second;
-}
-
 const char* const kVoicingStyles[5] = { "Automatico", "Stretto", "Aperto", "Drop 2", "Largo" };
 
 std::vector<OneFingerChord> oneFingerTable(const Engine& e) {

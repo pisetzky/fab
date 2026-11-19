@@ -91,7 +91,6 @@ struct ProOptionsView: View {
                 Section(footer: Text("Funzioni prese dai migliori plug-in simili (Scaler, Captain Chords, InstaChord/Cthulhu).")) {
                     Toggle("🖐 Accordi con un dito", isOn: toggle(.oneFinger))
                     Toggle("🔒 Blocca scala", isOn: toggle(.scaleLock))
-                    Toggle("🥁 Batteria del genere (Genre Player)", isOn: toggle(.drums))
                 }
                 Section("Suono") {
                     VStack(alignment: .leading) {
@@ -109,6 +108,13 @@ struct ProOptionsView: View {
                     Stepper("↕︎ Trasponi tastiera: \(Int(controller.proValue(.transpose)))", value: value(.transpose), in: -12...12, step: 1)
                     Picker("Voicing", selection: Binding(get: { Int(controller.proValue(.voicing)) }, set: { controller.setPro(.voicing, Double($0)) })) {
                         ForEach(Array(SuggestionEngine.voicingStyles.enumerated()), id: \.offset) { i, v in Text(v).tag(i) }
+                    }
+                }
+                Section(footer: Text("Per suonare un altro strumento della DAW: usa \"ChordPilot MIDI\" come effetto MIDI, oppure instrada l'uscita MIDI verso lo strumento. Con \"Tutto su un canale\" lo strumento riceve accordi e melodie insieme.")) {
+                    Toggle("🎹 Pianoforte interno", isOn: toggle(.synth))
+                    Picker("Uscita MIDI", selection: Binding(get: { Int(controller.proValue(.midiChannel)) }, set: { controller.setPro(.midiChannel, Double($0)) })) {
+                        Text("Canali separati").tag(0)
+                        ForEach(1...16, id: \.self) { Text("Tutto sul canale \($0)").tag($0) }
                     }
                 }
                 Section(footer: Text("Traccia 1 accompagnamento, traccia 2 melodia. Condividi verso GarageBand, Logic, AUM, File…")) {

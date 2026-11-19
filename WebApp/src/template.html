@@ -76,7 +76,6 @@ body.easy.played .easy-hint { opacity: 0; transition: opacity 1.5s 2s; }
 .btn.hands[aria-pressed="true"] { background: linear-gradient(135deg, rgba(25,211,197,0.55), rgba(92,214,255,0.45)); border-color: var(--teal); }
 .key.zone-l.w { background: #e2f4ff; }
 .key.split-mark { box-shadow: inset 4px 0 0 #ffc233; }
-.btn.drums[aria-pressed="true"] { background: linear-gradient(135deg, rgba(255,194,51,0.5), rgba(255,111,181,0.4)); border-color: rgba(255,194,51,0.8); }
 .timeline { display: flex; flex-wrap: wrap; gap: 6px; min-height: 40px; margin: 10px 0; padding: 8px; border: 1px dashed var(--line); border-radius: 12px; }
 .timeline .ch { padding: 6px 10px; border-radius: 10px; background: rgba(61,255,176,0.15); border: 1px solid rgba(61,255,176,0.4); font-weight: 700; }
 .saved { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
@@ -212,7 +211,6 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     <div class="field mel" data-adv><label for="melody">Melodia</label><select id="melody"></select></div>
     <button class="btn genius" id="genius" data-adv type="button" aria-pressed="false" title="Ogni tasto diventa la nota giusta, con l'accordo successivo">🧠 Modalità Genio</button>
     <button class="btn hands" id="handsBtn" data-adv type="button" aria-pressed="false" title="Tastiera divisa: sinistra accordi con il basso, destra melodia">🙌 Due mani</button>
-    <button class="btn drums" id="drumsBtn" data-adv type="button" aria-pressed="false" title="Batteria del genere sotto il Genre Player">🥁 Batteria</button>
     <button class="btn" id="songBtn" data-adv type="button" title="Costruttore di brani e canzoni salvate">📝 Brani</button>
     <button class="btn" id="circleBtn" data-adv type="button" title="Cerchio delle quinte e cambi di tonalità">🎡</button>
     <button class="btn insp" id="inspBtn" data-adv type="button" title="10 melodie che seguono la traccia">💡 Ispirazione</button>
@@ -259,7 +257,7 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
 
 <dialog id="song">
   <h2>📝 Costruttore di brani</h2>
-  <p class="pro-note">Ogni accordo che suoni (o che tocchi tra i suggerimenti) entra nella timeline. Riascoltala con ritmo, arpeggio, melodia e batteria del genere.</p>
+  <p class="pro-note">Ogni accordo che suoni (o che tocchi tra i suggerimenti) entra nella timeline. Riascoltala con ritmo, arpeggio e melodia del genere.</p>
   <label class="toggle"><input type="checkbox" id="songRec" checked> Aggiungi gli accordi suonati alla timeline</label>
   <div class="timeline" id="timeline"></div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -319,6 +317,7 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     <label class="toggle"><input type="checkbox" id="italian"> Nomi italiani (Do Re Mi)</label>
     <label class="toggle"><input type="checkbox" id="hints" checked> Mostra note della scala</label>
     <label class="toggle"><input type="checkbox" id="midiOut" checked> Invia MIDI alle uscite collegate</label>
+    <div class="field"><label for="midiChan">Uscita MIDI</label><select id="midiChan"></select></div>
     <div class="field"><label for="octaves">Ottave</label><select id="octaves"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div>
     <div class="field"><label for="prog">Progressione</label><select id="prog"></select></div>
     <div class="midi" id="midiStatus"></div>
@@ -353,7 +352,7 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     prog: 0, bpm: CP.GENRES[0].bpm, playing: false, midiOut: true,
     arp: store.get("arp", -1), melody: store.get("mel", -1), seed: store.get("seed", 0), genius: store.get("genius", false),
     easy: store.get("easy", true), playMode: store.get("playMode", "chords"),
-    drums: store.get("drums", false), twoHands: store.get("hands", false), splitNote: store.get("split", 60), timeline: [], songRec: true,
+    twoHands: store.get("hands", false), splitNote: store.get("split", 60), timeline: [], songRec: true,
     oneFinger: false, scaleLock: false, strum: 0, humanize: 0, swing: 0, transpose: 0, voicingStyle: 0
   };
   state.bpm = CP.GENRES[state.genre].bpm;
@@ -444,31 +443,15 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     vc.nodes.forEach(o => { try { o.stop(t + r * 3 + 0.05); } catch {} });
   }
 
-  // ---------- Drums (synthesised) ----------
-  function drum(kind, vel, t) {
-    if (!ctx) return;
-    const g = ctx.createGain(), v = vel / 127;
-    g.connect(master);
-    if (kind === "k") {
-      const o = ctx.createOscillator(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
-      g.gain.setValueAtTime(0.9 * v, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-      o.connect(g); o.start(t); o.stop(t + 0.4);
-    } else {
-      const n = ctx.createBufferSource(); n.buffer = noiseBuf; n.loop = true;
-      const f = ctx.createBiquadFilter();
-      f.type = kind === "s" ? "bandpass" : "highpass"; f.frequency.value = kind === "s" ? 1800 : 7500;
-      const dur = kind === "s" ? 0.18 : 0.05;
-      g.gain.setValueAtTime((kind === "s" ? 0.55 : 0.22) * v, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-      n.connect(f); f.connect(g); n.start(t); n.stop(t + dur + 0.02);
-      if (kind === "s") { const o = ctx.createOscillator(); o.frequency.value = 185; const og = ctx.createGain();
-        og.gain.setValueAtTime(0.25 * v, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.1); o.connect(og); og.connect(master); o.start(t); o.stop(t + 0.12); }
-    }
-  }
-  const DRUM_NOTE = { k: 36, s: 38, h: 42 };
-
   // ---------- MIDI (Web MIDI where the browser offers it: Chrome / Edge on computers) ----------
   let midiOutputs = [];
-  function sendMIDI(bytes) { if (state.midiOut) midiOutputs.forEach(o => { try { o.send(bytes); } catch {} }); }
+  function sendMIDI(bytes) {
+    if (!state.midiOut || !midiOutputs.length) return;
+    // "Tutto su un canale": everything goes to one instrument of the DAW / one synth.
+    const ch = store.get("midiChan", 0);
+    const msg = ch > 0 && bytes[0] < 0xF0 ? [(bytes[0] & 0xF0) | (ch - 1), bytes[1], bytes[2]] : bytes;
+    midiOutputs.forEach(o => { try { o.send(msg); } catch {} });
+  }
   function initMIDI() {
     if (!navigator.requestMIDIAccess) { $("midiStatus").textContent = "MIDI esterno: non disponibile in questo browser (Safari su iPad non lo supporta)."; return; }
     navigator.requestMIDIAccess().then(access => {
@@ -705,16 +688,6 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     while (nextTime < ctx.currentTime + 0.12) {
       const s = nextStep % pattern.total, t = nextTime;
       const sw = (s % 2 === 1) ? spb * state.swing / 100 : 0;   // swing delays the off-beat 16ths
-      if (state.drums) {
-        const g = CP.GENRES[state.genre], d = CP.DRUMS[g.id] || {};
-        for (const kind of ["k", "s", "h"]) {
-          if ((d[kind] || "")[s % 16] !== "x") continue;
-          const vel = humanVel(kind === "h" ? (s % 4 === 0 ? 70 : 50) : (s % 16 === 0 ? 110 : 96));
-          drum(kind, vel, t + sw + humanTime());
-          const dt = Math.max(0, (t + sw - ctx.currentTime) * 1000);
-          setTimeout(() => { sendMIDI([0x99, DRUM_NOTE[kind], vel]); setTimeout(() => sendMIDI([0x89, DRUM_NOTE[kind], 0]), 60); }, dt);
-        }
-      }
       let chordIdx2 = 0;
       for (const e of pattern.events) {
         if (e.step !== s) continue;
@@ -940,10 +913,6 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
   }
   $("inspBtn").addEventListener("click", () => $("inspire").showModal());
 
-  // ---- Drums ----
-  const paintDrums = () => $("drumsBtn").setAttribute("aria-pressed", String(state.drums));
-  paintDrums();
-  $("drumsBtn").addEventListener("click", () => { state.drums = !state.drums; store.set("drums", state.drums); paintDrums(); audio(); });
 
   // ---- Song builder & saved songs ----
   function renderTimeline() {
@@ -1140,6 +1109,10 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
   $("italian").addEventListener("change", e => { state.italian = e.target.checked; store.set("it", state.italian); afterChange(); });
   $("hints").addEventListener("change", e => { state.hints = e.target.checked; store.set("hints", state.hints); renderKeys(); });
   $("midiOut").addEventListener("change", e => { state.midiOut = e.target.checked; });
+  $("midiChan").add(new Option("Canali separati (1 accordi, 2 melodia, 3 Genio)", 0));
+  for (let c = 1; c <= 16; c++) $("midiChan").add(new Option("Tutto sul canale " + c, c));
+  $("midiChan").value = store.get("midiChan", 0);
+  $("midiChan").addEventListener("change", e => store.set("midiChan", +e.target.value));
   $("octaves").addEventListener("change", e => { state.octaves = +e.target.value; store.set("oct", state.octaves); buildKeyboard(); recompute(); });
   $("octDown").addEventListener("click", () => { state.low = Math.max(24, state.low - 12); store.set("low", state.low); buildKeyboard(); recompute(); });
   $("octUp").addEventListener("click", () => { state.low = Math.min(84, state.low + 12); store.set("low", state.low); buildKeyboard(); recompute(); });

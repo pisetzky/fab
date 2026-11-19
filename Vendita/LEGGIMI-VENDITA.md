@@ -16,7 +16,8 @@ I segnaposto da completare sono scritti così: **[TUO NOME / AZIENDA]**, **[EMAI
 Funzioni incluse in tutte le versioni: 23 generi, 10 pianoforti, suggerimento accordi e note,
 Genre Player con 30 arpeggi × 30 melodie per genere, Nuova canzone, Modalità Genio, Ispirazione
 (10 melodie che seguono la traccia), opzioni Pro (accordi con un dito, blocca scala, strum, humanize,
-swing, voicing, trasposizione), batteria del genere, export MIDI. La versione web ha in più
+swing, voicing, trasposizione), Modalità Pianista, Due mani, Accordi/Note, Modalità Facile,
+versione effetto MIDI per pilotare qualsiasi strumento della DAW, export MIDI. La versione web ha in più
 costruttore di brani, cerchio delle quinte con cambi di tonalità e "Le mie canzoni".
 
 ## 2. Passaggi obbligatori prima di vendere

@@ -23,7 +23,11 @@ public:
     const juce::String getName() const override { return "ChordPilot"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return true; }
+#if CHORDPILOT_MIDI_FX
+    bool isMidiEffect() const override { return true; }    // "ChordPilot MIDI": drives any instrument of the DAW
+#else
     bool isMidiEffect() const override { return false; }
+#endif
     double getTailLengthSeconds() const override { return 2.0; }
 
     int getNumPrograms() override { return (int) cp::genres().size(); }
@@ -126,6 +130,8 @@ private:
     size_t cursor = 0;
     float smoothedVolume = 0.8f;
     juce::AudioBuffer<float> monoScratch;
+    juce::AudioBuffer<float> fxScratch;                     // MIDI-effect build: the piano renders here (not heard)
+    juce::MidiBuffer mapped;                                // MIDI out remapped to a single channel
     juce::MidiBuffer chordQueue;                            // notes from tapped suggestions
     juce::CriticalSection chordLock;
 

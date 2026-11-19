@@ -7,7 +7,7 @@
 **App privacy**: Data Not Collected
 
 **Promotional text (170)**
-Play one note and ChordPilot lights up the next chords in the style of 23 genres. Genius Mode, Inspiration and 900 hit-style melodies per genre.
+Play one note and ChordPilot lights up the next chords in the style of 23 genres. Genius Mode, Inspiration, and it plays any instrument.
 
 **Description**
 ChordPilot is the piano that writes music with you. Play a note or a chord and the next keys light up:
@@ -19,14 +19,15 @@ the best next chord, the alternatives and the melody notes – in the style of t
 • 10 PIANOS – concert grand, bright pop piano, upright, tine, reed and FM electric pianos,
   honky-tonk, harpsichord, toy piano, felt piano.
 • GENIUS MODE – every key becomes the right note with a hit-worthy chord underneath.
-• GENRE PLAYER – 30 arpeggios and 30 hit-style melodies for every arpeggio and genre, genre drums,
+• GENRE PLAYER – 30 arpeggios and 30 hit-style melodies for every arpeggio and genre,
   and "New Song" for a completely different track at every tap.
 • INSPIRATION – ChordPilot listens to your track and suggests 10 melodies that follow it.
 • PRO OPTIONS – one-finger chords, scale lock, strum, humanize, swing, voicings, transpose.
 • AUv3 PLUG-IN – GarageBand, Logic Pro for iPad, Cubasis, AUM, Loopy Pro and every AUv3 host,
   as an instrument or a MIDI effect. Every genre is a preset.
 • ZERO SETUP – USB, Bluetooth and network MIDI keyboards, audio interfaces and outputs connect automatically.
-• MIDI EXPORT – take chords, melodies and drums into your DAW.
+• ANY INSTRUMENT – as a MIDI effect it plays the synths, strings and plug-ins of your DAW.
+• MIDI EXPORT – take chords and melodies into your DAW.
 
 No subscription, no ads, no data collected.
 

@@ -137,10 +137,6 @@ struct Rng {
     }
 };
 
-/// Drum groove of a genre (16 steps each; 'x' = hit): kick, snare/clap, hi-hat. Empty strings = no drums.
-struct DrumGroove { const char* kick; const char* snare; const char* hat; };
-DrumGroove drumGroove(const std::string& genreId);
-
 /// arp: -1 = genre rhythm, 0..29 = arpeggio; melody: -1 = none, 0..29; seed = song variation.
 Pattern buildPattern(const Genre& g, const Key& k, int progIndex, int complexity, int arp = -1, int melody = -1, int seed = 0);
 

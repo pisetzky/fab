@@ -88,17 +88,15 @@ final class ChordPilotDSPKernel {
     var twoHandsEnabled = false
     var splitNote = 60
     var notesOnly = false
+    /// MIDI out for external instruments: 0 = separate channels, 1...16 = everything on that channel.
+    var midiChannel = 0
+    @inline(__always) private func mapChannel(_ status: UInt8) -> UInt8 {
+        guard midiChannel > 0, status < 0xF0 else { return status }
+        return (status & 0xF0) | UInt8(midiChannel - 1)
+    }
     private var gPrevBass = -1
     private var handRoot = -1, handThird = 4, handUpper = 7
     private var handChordAt: Int64 = -1_000_000
-    // Genre drums: 3 lanes × 16 steps (written by the AU on genre change), synthesised voices.
-    var drumsEnabled = false
-    let drumLanes: UnsafeMutablePointer<UInt8> = {
-        let p = UnsafeMutablePointer<UInt8>.allocate(capacity: 48); p.initialize(repeating: 0, count: 48); return p }()
-    private var drumT = [Float](repeating: 1e9, count: 3)
-    private var drumVel = [Float](repeating: 0, count: 3)
-    private var drumPhase = [Float](repeating: 0, count: 3)
-    private var drumLP = [Float](repeating: 0, count: 3)
     private var inTransform = false
     private let ofScratch: UnsafeMutablePointer<Int32> = {
         let p = UnsafeMutablePointer<Int32>.allocate(capacity: 12); p.initialize(repeating: 0, count: 12); return p }()
@@ -428,15 +426,6 @@ final class ChordPilotDSPKernel {
                           offset: Int, sampleTime: Float64, stepsPerChord: Int) {
         if step == 0 { cursor = 0 }
         patternChordIndex = Int32(step / max(1, stepsPerChord))
-        if drumsEnabled {
-            let notes: [UInt8] = [36, 38, 42]
-            for k in 0..<3 where drumLanes[k * 16 + step % 16] != 0 {
-                let vel: UInt8 = k == 2 ? (step % 4 == 0 ? 70 : 50) : (step % 16 == 0 ? 110 : 96)
-                if synthEnabled && !isMIDIEffect { drumT[k] = 0; drumVel[k] = Float(vel) / 127; drumPhase[k] = 0 }
-                sendOut(0x99, notes[k], vel, offset: offset, sampleTime: sampleTime)          // MIDI channel 10
-                sendOut(0x89, notes[k], 0, offset: min(offset + 1, 4095), sampleTime: sampleTime)
-            }
-        }
         let s = Int32(step)
         while cursor < count && buffer[cursor].step < s { cursor += 1 }
         // Pro: swing, strum and humanize go through the delayed-event queue.
@@ -522,7 +511,7 @@ final class ChordPilotDSPKernel {
             break
         }
         if forward && (midiThru || fromPattern || fromUI), let out = midiOut {
-            midiBytes[0] = status; midiBytes[1] = d1; midiBytes[2] = d2
+            midiBytes[0] = mapChannel(status); midiBytes[1] = d1; midiBytes[2] = d2
             let len = (type == 0xC0 || type == 0xD0) ? 2 : 3
             _ = out(AUEventSampleTime(sampleTime) + AUEventSampleTime(offset), 0, len, midiBytes)
         }
@@ -820,7 +809,7 @@ final class ChordPilotDSPKernel {
 
     private func sendOut(_ status: UInt8, _ d1: UInt8, _ d2: UInt8, offset: Int, sampleTime: Float64) {
         guard let out = midiOut else { return }
-        midiBytes[0] = status; midiBytes[1] = d1; midiBytes[2] = d2
+        midiBytes[0] = mapChannel(status); midiBytes[1] = d1; midiBytes[2] = d2
         _ = out(AUEventSampleTime(sampleTime) + AUEventSampleTime(offset), 0, 3, midiBytes)
     }
 
@@ -1006,35 +995,6 @@ final class ChordPilotDSPKernel {
             if !v.releasing && v.env < 0.0003 { v.active = false }
             voices[i] = v
         }
-        // Genre drums (kick 150→45 Hz sweep, snare noise + body, short hi-hat).
-        let sr = Float(sampleRate)
-        for k in 0..<3 where drumT[k] < sr * 0.6 {
-            for f in start..<end {
-                let time = drumT[k] / sr
-                var s: Float = 0
-                if k == 0 {
-                    drumPhase[k] += (45 + 105 * expf(-time * 25)) / sr
-                    if drumPhase[k] >= 1 { drumPhase[k] -= 1 }
-                    s = sinf(drumPhase[k] * twoPi) * expf(-time * 9) * 0.9
-                } else {
-                    noiseSeed = noiseSeed &* 1664525 &+ 1013904223
-                    let noise = Float(noiseSeed >> 9) / 4194304.0 - 1.0
-                    if k == 1 {
-                        drumLP[k] += 0.35 * (noise - drumLP[k])
-                        drumPhase[k] += 185 / sr
-                        if drumPhase[k] >= 1 { drumPhase[k] -= 1 }
-                        s = (noise - drumLP[k]) * 0.55 * expf(-time * 18) + sinf(drumPhase[k] * twoPi) * 0.25 * expf(-time * 30)
-                    } else {
-                        drumLP[k] += 0.8 * (noise - drumLP[k])
-                        s = (noise - drumLP[k]) * 0.3 * expf(-time * 70)
-                    }
-                }
-                s *= drumVel[k] * 1.4   // the volume stage below scales everything by ≈0.35 × volume
-                left[f] += s
-                right?[f] += s
-                drumT[k] += 1
-            }
-        }
         // Volume smoothing + soft clip.
         for f in start..<end {
             smoothedVolume += (target - smoothedVolume) * 0.002
@@ -1055,5 +1015,5 @@ final class ChordPilotDSPKernel {
 public enum ParamAddress: AUParameterAddress {
     case genre = 0, keyRoot, keyMinor, complexity, volume, synth, hostSync, play, progression, bpm, piano,
          arpeggio, melody, song, genius,
-         oneFinger, scaleLock, strum, humanize, swing, transpose, voicing, drums, hands, split, notesOnly
+         oneFinger, scaleLock, strum, humanize, swing, transpose, voicing, drums, hands, split, notesOnly, midiChannel   // `drums` kept for parameter-address stability (unused)
 }

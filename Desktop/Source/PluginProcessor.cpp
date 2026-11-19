@@ -17,7 +17,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "minor", 1 }, "Modo minore", false));
     l.add(std::make_unique<AudioParameterChoice>(ParameterID { "complexity", 1 }, "Complessita", cx, 1));
     l.add(std::make_unique<AudioParameterFloat>(ParameterID { "volume", 1 }, "Volume", NormalisableRange<float>(0, 1), 0.8f));
+#if CHORDPILOT_MIDI_FX
+    l.add(std::make_unique<AudioParameterBool>(ParameterID { "synth", 1 }, "Pianoforte interno", false));
+#else
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "synth", 1 }, "Pianoforte interno", true));
+#endif
+    // MIDI out for external instruments: separate channels (1 accompaniment, 2 melody, 3 Genius chords) or all on one channel.
+    StringArray chans { "Canali separati" }; for (int c = 1; c <= 16; ++c) chans.add("Tutto sul canale " + String(c));
+    l.add(std::make_unique<AudioParameterChoice>(ParameterID { "midichan", 1 }, "Uscita MIDI", chans, 0));
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "sync", 1 }, "Sync DAW", true));
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "play", 1 }, "Genre Player", false));
     l.add(std::make_unique<AudioParameterInt>(ParameterID { "progression", 1 }, "Progressione", 0, 5, 0));
@@ -38,7 +45,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
     l.add(std::make_unique<AudioParameterInt>(ParameterID { "swing", 1 }, "Swing (%)", 0, 60, 0));
     l.add(std::make_unique<AudioParameterInt>(ParameterID { "transpose", 1 }, "Trasponi", -12, 12, 0));
     l.add(std::make_unique<AudioParameterChoice>(ParameterID { "voicing", 1 }, "Voicing", voicings, 0));
-    l.add(std::make_unique<AudioParameterBool>(ParameterID { "drums", 1 }, "Batteria", false));
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "hands", 1 }, "Due mani", false));
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "notesonly", 1 }, "Solo note (Genio)", false));
     l.add(std::make_unique<AudioParameterInt>(ParameterID { "split", 1 }, "Divisione mani", 36, 84, 60));
@@ -47,7 +53,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
 }
 
 ChordPilotProcessor::ChordPilotProcessor()
+#if CHORDPILOT_MIDI_FX
+    : AudioProcessor(BusesProperties()),
+#else
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+#endif
       params(*this, nullptr, "ChordPilot", makeLayout()) {
     for (auto& a : held) a = 0;
     for (auto& a : patternNotes) a = 0;
@@ -61,6 +71,10 @@ ChordPilotProcessor::ChordPilotProcessor()
 ChordPilotProcessor::~ChordPilotProcessor() { stopTimer(); }
 
 bool ChordPilotProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
+#if CHORDPILOT_MIDI_FX
+    juce::ignoreUnused(layouts);
+    return true;
+#endif
     auto out = layouts.getMainOutputChannelSet();
     return out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono();
 }
@@ -446,6 +460,8 @@ void ChordPilotProcessor::prepareToPlay(double sr, int samplesPerBlock) {
     sampleRate = sr;
     synth.prepare(sr);
     monoScratch.setSize(1, std::max(1, samplesPerBlock) * 2);
+    fxScratch.setSize(2, std::max(1, samplesPerBlock) * 2);
+    mapped.ensureSize(4096);
     isPlaying = false;
     audioPattern = std::atomic_load(&pattern);
 }
@@ -495,20 +511,6 @@ void ChordPilotProcessor::releasePattern(int offset, juce::MidiBuffer& out) {
 
 void ChordPilotProcessor::fireStep(int step, const cp::Pattern& p, int offset, juce::MidiBuffer& out) {
     if (step == 0) cursor = 0;
-    // Genre drums (synth + MIDI channel 10: 36 kick, 38 snare, 42 hi-hat).
-    if (params.getRawParameterValue("drums")->load() > 0.5f) {
-        auto groove = cp::drumGroove(cp::genres()[(size_t) juce::jlimit(0, (int) cp::genres().size() - 1, genreIndex())].id);
-        const char* lanes[3] = { groove.kick, groove.snare, groove.hat };
-        const int notes[3] = { 36, 38, 42 };
-        const bool synthOn = params.getRawParameterValue("synth")->load() > 0.5f;
-        for (int k = 0; k < 3; ++k) {
-            if (std::strlen(lanes[k]) < 16 || lanes[k][step % 16] != 'x') continue;
-            int vel = k == 2 ? (step % 4 == 0 ? 70 : 50) : (step % 16 == 0 ? 110 : 96);
-            if (synthOn) synth.drum(k, vel);
-            out.addEvent(juce::MidiMessage::noteOn(10, notes[k], (juce::uint8) vel), offset);
-            out.addEvent(juce::MidiMessage::noteOff(10, notes[k]), std::min(offset + 1, std::max(offset, (int) (sampleRate * 0.05) + offset)));
-        }
-    }
     patternChordIndex = step / std::max(1, p.stepsPerChord);
     while (cursor < p.events.size() && p.events[cursor].step < step) ++cursor;
     const int swing = (int) params.getRawParameterValue("swing")->load();
@@ -592,8 +594,12 @@ void ChordPilotProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     }
     const double phaseStart = stepPhase, phaseEnd = stepPhase + n / samplesPerStep;
 
-    float* L = buffer.getWritePointer(0);
-    float* R = buffer.getNumChannels() > 1 ? buffer.getWritePointer(1) : nullptr;
+    if (buffer.getNumChannels() == 0) {   // MIDI-effect build: no audio bus, render into a silent scratch buffer
+        if (fxScratch.getNumSamples() < n) fxScratch.setSize(2, n, false, false, true);
+        fxScratch.clear();
+    }
+    float* L = buffer.getNumChannels() > 0 ? buffer.getWritePointer(0) : fxScratch.getWritePointer(0);
+    float* R = buffer.getNumChannels() > 1 ? buffer.getWritePointer(1) : (buffer.getNumChannels() == 0 ? fxScratch.getWritePointer(1) : nullptr);
     if (!R) { // mono layout: render the right channel into a pre-allocated throw-away buffer
         if (monoScratch.getNumSamples() < n) monoScratch.setSize(1, n, false, false, true);
         monoScratch.clear(); R = monoScratch.getWritePointer(0);
@@ -637,11 +643,22 @@ void ChordPilotProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     if (isPlaying) stepPhase = phaseEnd;
 
     const float target = params.getRawParameterValue("volume")->load();
-    for (int i = 0; i < n; ++i) {
+    for (int i = 0; i < n && buffer.getNumChannels() > 0; ++i) {
         smoothedVolume += (target - smoothedVolume) * 0.002f;
         auto clip = [](float x) { x = juce::jlimit(-1.0f, 1.0f, x); return x - x * x * x / 6.0f; };
         L[i] = clip(L[i] * smoothedVolume);
         if (buffer.getNumChannels() > 1) R[i] = clip(R[i] * smoothedVolume);
+    }
+    // Single-channel MIDI out (to play one instrument of the DAW with everything ChordPilot generates).
+    const int chan = (int) params.getRawParameterValue("midichan")->load();
+    if (chan > 0) {
+        mapped.clear();
+        for (const auto meta : out) {
+            auto msg = meta.getMessage();
+            if (msg.getChannel() > 0) msg.setChannel(chan);
+            mapped.addEvent(msg, meta.samplePosition);
+        }
+        out.swapWith(mapped);
     }
     midi.swapWith(out);
 }

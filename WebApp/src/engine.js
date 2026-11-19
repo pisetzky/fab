@@ -597,31 +597,6 @@ const CP = (() => {
     return events;
   }
 
-  // ---------- Drums: one groove per genre (k = kick, s = snare/clap, h = hi-hat), 16 steps ----------
-  const DRUMS = {
-    pop:{k:"x.......x.x.....",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, rock:{k:"x.....x.x.......",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."},
-    hiphop:{k:"x......x..x.....",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, trap:{k:"x.......x..x....",s:"........x.......",h:"x.x.xxx.x.x.x.xx"},
-    rnb:{k:"x......x..x.....",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, jazz:{k:"x.......x.......",s:"......x.......x.",h:"x..xx..xx..xx..x"},
-    blues:{k:"x.....x.x.....x.",s:"....x.......x...",h:"x..xx..xx..xx..x"}, edm:{k:"x...x...x...x...",s:"....x.......x...",h:"..x...x...x...x."},
-    house:{k:"x...x...x...x...",s:"....x.......x...",h:"..x...x...x...x."}, techno:{k:"x...x...x...x...",s:"....x.......x...",h:"xxx.xxx.xxx.xxx."},
-    melodictechno:{k:"x...x...x...x...",s:"....x.......x...",h:"..x...x...x...x."}, afrohouse:{k:"x...x...x...x...",s:"...x..x....x..x.",h:"x.xx.xx.x.xx.xx."},
-    reggaeton:{k:"x...x...x...x...",s:"...x..x....x..x.",h:"x.x.x.x.x.x.x.x."}, latin:{k:"x..x....x..x....",s:"...x..x....x.x..",h:"x.x.x.x.x.x.x.x."},
-    country:{k:"x.......x.......",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, funk:{k:"x..x..x...x.....",s:"....x..x.x..x...",h:"xxxxxxxxxxxxxxxx"},
-    gospel:{k:"x......x..x.....",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, metal:{k:"xxxxxxxxxxxxxxxx",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."},
-    reggae:{k:"........x.......",s:"........x.......",h:"..x...x...x...x."}, classical:{k:"",s:"",h:""},
-    lofi:{k:"x.......x.x.....",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, afrobeats:{k:"x..x..x.x.......",s:"....x.......x...",h:"x.xx.xx.x.xx.xx."},
-    cinematic:{k:"x.......x.......",s:"",h:""}
-  };
-  /// Drum hits for `total` steps: [{step, drum: "k"|"s"|"h", vel}].
-  function drumHits(g, total) {
-    const d = DRUMS[g.id] || {}, out = [];
-    for (let s = 0; s < total; s++) for (const drum of ["k", "s", "h"]) {
-      const lane = d[drum] || ""; if (lane[s % 16] !== "x") continue;
-      out.push({ step: s, drum, vel: drum === "h" ? (s % 4 === 0 ? 70 : 50) : (s % 16 === 0 ? 110 : 96) });
-    }
-    return out;
-  }
-
   // ---------- Key changes: closely related keys with a pivot chord and the new key's dominant ----------
   function modulations(k) {
     const targets = [
@@ -928,7 +903,7 @@ const CP = (() => {
     return [...new Set(lh.concat(rh))].filter(n => n >= 24 && n < melody).sort((x, y) => x - y);
   }
 
-  return { leftHandVoicing, rightHandVoicing, DRUMS, drumHits, modulations, inspire, analyzeTrack, INSPIRE_NAMES, geniusVoicing, VOICING_STYLES, oneFingerTable, styleVoicing, lockToScale, patternToMidi, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
+  return { leftHandVoicing, rightHandVoicing, modulations, inspire, analyzeTrack, INSPIRE_NAMES, geniusVoicing, VOICING_STYLES, oneFingerTable, styleVoicing, lockToScale, patternToMidi, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
            GENRES, PIANOS, SCALE_NAMES, Engine, buildPattern, prefersFlats, pcs, ARPEGGIOS, MELODY_NAMES, MELODY_COUNT, rng };
 })();
 if (typeof module !== "undefined") module.exports = CP;

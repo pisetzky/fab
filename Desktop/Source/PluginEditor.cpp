@@ -181,7 +181,9 @@ ProPanel::ProPanel(ChordPilotProcessor& p) {
     setup(swing, swingL, "Swing Genre Player", " %");
     setup(transpose, transposeL, "Trasponi tastiera", "");
     for (auto* v : cp::kVoicingStyles) voicing.addItem(juce::String("Voicing: ") + v, voicing.getNumItems() + 1);
-    addAndMakeVisible(oneFinger); addAndMakeVisible(scaleLock); addAndMakeVisible(voicing);
+    midiChan.addItem("Uscita MIDI: canali separati", 1);
+    for (int c = 1; c <= 16; ++c) midiChan.addItem("Uscita MIDI: tutto sul canale " + juce::String(c), c + 1);
+    addAndMakeVisible(oneFinger); addAndMakeVisible(scaleLock); addAndMakeVisible(voicing); addAndMakeVisible(midiChan);
     auto& s = p.params;
     a1 = std::make_unique<BA>(s, "onefinger", oneFinger);
     a2 = std::make_unique<BA>(s, "scalelock", scaleLock);
@@ -190,7 +192,8 @@ ProPanel::ProPanel(ChordPilotProcessor& p) {
     s3 = std::make_unique<SA>(s, "swing", swing);
     s4 = std::make_unique<SA>(s, "transpose", transpose);
     c1 = std::make_unique<CA>(s, "voicing", voicing);
-    setSize(440, 300);
+    c2 = std::make_unique<CA>(s, "midichan", midiChan);
+    setSize(440, 340);
 }
 
 void ProPanel::paint(juce::Graphics& g) {
@@ -208,7 +211,8 @@ void ProPanel::resized() {
         auto row = r.removeFromTop(30); l->setBounds(row.removeFromLeft(150)); s->setBounds(row);
     }
     r.removeFromTop(6);
-    voicing.setBounds(r.removeFromTop(30));
+    voicing.setBounds(r.removeFromTop(30)); r.removeFromTop(6);
+    midiChan.setBounds(r.removeFromTop(30));
 }
 
 // ---------------------------------------------------------------- MIDI export
@@ -394,7 +398,7 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &genreBox, &pianoBox, &keyBox, &complexityBox, &progressionBox,
             &minorToggle, &synthToggle, &syncToggle, &italianToggle, &playButton, &bpmSlider, &octDown, &octUp, &keyboard,
-            &arpBox, &melodyBox, &newSongButton, &geniusButton, &proButton, &midiButton, &inspireButton, &drumsToggle, &handsToggle, &notesToggle })
+            &arpBox, &melodyBox, &newSongButton, &geniusButton, &proButton, &midiButton, &inspireButton, &handsToggle, &notesToggle })
         addAndMakeVisible(c);
     for (auto& c : cards) {
         addAndMakeVisible(c);
@@ -421,7 +425,6 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
     syncA = std::make_unique<BA>(s, "sync", syncToggle);
     playA = std::make_unique<BA>(s, "play", playButton);
     geniusA = std::make_unique<BA>(s, "genius", geniusButton);
-    drumsA = std::make_unique<BA>(s, "drums", drumsToggle);
     handsA = std::make_unique<BA>(s, "hands", handsToggle);
     notesA = std::make_unique<BA>(s, "notesonly", notesToggle);
     bpmA = std::make_unique<SA>(s, "bpm", bpmSlider);
@@ -595,7 +598,6 @@ void ChordPilotEditor::resized() {
     synthToggle.setBounds(second.removeFromLeft(120));
     syncToggle.setBounds(second.removeFromLeft(100));
     italianToggle.setBounds(second.removeFromLeft(100));
-    drumsToggle.setBounds(second.removeFromLeft(100));
     handsToggle.setBounds(second.removeFromLeft(110));
     notesToggle.setBounds(second.removeFromLeft(110));
     r.removeFromTop(8);

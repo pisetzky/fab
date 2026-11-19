@@ -7,6 +7,7 @@ if [ ! -f "$SRC/ChordPilot" ]; then echo "Manca Linux/ChordPilot in questa carte
 mkdir -p "$HOME/.vst3" "$HOME/.local/bin" "$HOME/.local/share/applications"
 rm -rf "$HOME/.vst3/ChordPilot.vst3"
 cp -R "$SRC/ChordPilot.vst3" "$HOME/.vst3/"
+if [ -d "$SRC/ChordPilot MIDI.vst3" ]; then rm -rf "$HOME/.vst3/ChordPilot MIDI.vst3"; cp -R "$SRC/ChordPilot MIDI.vst3" "$HOME/.vst3/"; fi
 cp "$SRC/ChordPilot" "$HOME/.local/bin/ChordPilot" && chmod +x "$HOME/.local/bin/ChordPilot"
 cat > "$HOME/.local/share/applications/chordpilot.desktop" <<DESK
 [Desktop Entry]

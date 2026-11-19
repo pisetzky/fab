@@ -60,12 +60,6 @@ public:
             }
     }
 
-    /// Simple synthesised drums: 0 kick, 1 snare, 2 hi-hat.
-    void drum(int kind, int velocity) {
-        auto& d = drums[(size_t) kind];
-        d.active = true; d.t = 0; d.vel = velocity / 127.0f; d.phase = 0;
-    }
-
     void allNotesOff() { for (auto& v : voices) if (v.active) { v.releasing = true; v.pedal = false; } }
 
     /// Adds into L/R from sample `start` to `end`.
@@ -92,34 +86,6 @@ public:
             }
             if ((v.releasing && v.env < 0.0005f) || (!v.releasing && v.env < 0.0003f)) v.active = false;
         }
-        const float sr = (float) sampleRate;
-        for (int kind = 0; kind < 3; ++kind) {
-            auto& d = drums[(size_t) kind];
-            if (!d.active) continue;
-            for (int f = start; f < end; ++f) {
-                float time = d.t / sr, s = 0;
-                if (kind == 0) {             // kick: pitch sweep 150 → 45 Hz
-                    float freq = 45.0f + 105.0f * std::exp(-time * 25.0f);
-                    d.phase += freq / sr; if (d.phase >= 1) d.phase -= 1;
-                    s = std::sin(d.phase * twoPi) * std::exp(-time * 9.0f) * 0.9f;
-                } else {
-                    seed = seed * 1664525u + 1013904223u;
-                    float noise = (float) (seed >> 9) / 4194304.0f - 1.0f;
-                    if (kind == 1) {          // snare: band-ish noise + 185 Hz body
-                        d.lp += 0.35f * (noise - d.lp);
-                        d.phase += 185.0f / sr; if (d.phase >= 1) d.phase -= 1;
-                        s = ((noise - d.lp) * 0.55f * std::exp(-time * 18.0f)) + std::sin(d.phase * twoPi) * 0.25f * std::exp(-time * 30.0f);
-                    } else {                  // hi-hat: high-passed noise, very short
-                        d.lp += 0.8f * (noise - d.lp);
-                        s = (noise - d.lp) * 0.3f * std::exp(-time * 70.0f);
-                    }
-                }
-                s *= d.vel * 0.5f;
-                L[f] += s; R[f] += s;
-                d.t += 1;
-            }
-            if (d.t > sr * 0.6f) d.active = false;
-        }
     }
 
 private:
@@ -130,8 +96,6 @@ private:
         float fmPhase = 0, fmInc = 0, fmIndex = 0, fmCoef = 0.999f, detPhase = 0, detInc = 0, detAmp = 0, click = 0, clickCoef = 0.99f;
     };
     Voice voices[kMaxVoices];
-    struct Drum { bool active = false; float t = 0, vel = 0, phase = 0, lp = 0; };
-    std::array<Drum, 3> drums {};
     double sampleRate = 44100;
     int model = 0;
     bool sustain = false;

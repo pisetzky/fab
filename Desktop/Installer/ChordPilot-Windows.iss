@@ -1,5 +1,8 @@
 ; Inno Setup script – Windows installer with component choice (VST3 / Standalone).
 ; Built by CI:  iscc /DSrcDir=<artefacts\Release> ChordPilot-Windows.iss
+#ifndef MidiDir
+  #define MidiDir "..\build\ChordPilotMIDI_artefacts\Release"
+#endif
 #ifndef SrcDir
   #define SrcDir "..\build\ChordPilot_artefacts\Release"
 #endif
@@ -28,11 +31,12 @@ Name: "standalone"; Description: "Solo app Standalone"
 Name: "custom"; Description: "Personalizzata"; Flags: iscustom
 
 [Components]
-Name: "vst3"; Description: "Plug-in VST3 (Ableton, FL Studio, Cubase, Reaper, Studio One, Bitwig…)"; Types: full vst3 custom
+Name: "vst3"; Description: "Plug-in VST3 ChordPilot + ChordPilot MIDI (Ableton, FL Studio, Cubase, Reaper, Studio One, Bitwig…)"; Types: full vst3 custom
 Name: "standalone"; Description: "App Standalone (si collega da sola a scheda audio e tastiere MIDI)"; Types: full standalone custom
 
 [Files]
 Source: "{#SrcDir}\VST3\ChordPilot.vst3\*"; DestDir: "{commoncf64}\VST3\ChordPilot.vst3"; Components: vst3; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#MidiDir}\VST3\ChordPilot MIDI.vst3\*"; DestDir: "{commoncf64}\VST3\ChordPilot MIDI.vst3"; Components: vst3; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#SrcDir}\Standalone\ChordPilot.exe"; DestDir: "{app}"; Components: standalone; Flags: ignoreversion
 
 [Icons]

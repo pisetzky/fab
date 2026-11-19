@@ -51,6 +51,34 @@ target_link_libraries(ChordPilot
     PRIVATE juce::juce_audio_utils juce::juce_audio_devices
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
+# ---- ChordPilot MIDI: MIDI-effect version (no audio) that drives ANY instrument in the DAW ----
+set(CP_MIDI_FORMATS VST3)
+if(APPLE)
+    list(APPEND CP_MIDI_FORMATS AU)
+endif()
+juce_add_plugin(ChordPilotMIDI
+    COMPANY_NAME "Fab Audio"
+    PLUGIN_MANUFACTURER_CODE FabA
+    PLUGIN_CODE Chpm
+    FORMATS ${CP_MIDI_FORMATS}
+    PRODUCT_NAME "ChordPilot MIDI"
+    IS_SYNTH FALSE
+    NEEDS_MIDI_INPUT TRUE
+    NEEDS_MIDI_OUTPUT TRUE
+    IS_MIDI_EFFECT TRUE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    COPY_PLUGIN_AFTER_BUILD FALSE
+    VST3_CATEGORIES Fx Generator
+    AU_MAIN_TYPE kAudioUnitType_MIDIProcessor
+    BUNDLE_ID com.fabaudio.chordpilot.midi)
+juce_generate_juce_header(ChordPilotMIDI)
+target_sources(ChordPilotMIDI PRIVATE Source/Engine.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+target_compile_definitions(ChordPilotMIDI PUBLIC
+    CHORDPILOT_MIDI_FX=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(ChordPilotMIDI
+    PRIVATE juce::juce_audio_utils juce::juce_audio_devices
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
 # Engine unit tests (plain C++)
 add_executable(ChordPilotEngineTests Tests/EngineTests.cpp Source/Engine.cpp)
 target_include_directories(ChordPilotEngineTests PRIVATE Source)
