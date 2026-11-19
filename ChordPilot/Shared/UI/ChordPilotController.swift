@@ -23,6 +23,7 @@ public final class ChordPilotController: ObservableObject {
     @Published public private(set) var synthOn = true
     @Published public private(set) var hostSync = true
     @Published public private(set) var progressionIndex = 0
+    @Published public private(set) var piano: PianoModel = PianoModel.all[0]
     @Published public var italianNames = Locale.current.language.languageCode?.identifier == "it"
     @Published public var lowestNote = 48        // C3
     @Published public var octaves = 3
@@ -76,6 +77,7 @@ public final class ChordPilotController: ObservableObject {
         synthOn = au.parameterValue(.synth) > 0.5
         hostSync = au.parameterValue(.hostSync) > 0.5
         progressionIndex = au.progressionIndex
+        piano = PianoModel.all[max(0, min(PianoModel.all.count - 1, Int(au.parameterValue(.piano).rounded())))]
         patternChords = au.currentPattern?.chords ?? []
         engine.genre = genre
         engine.complexity = complexity
@@ -176,6 +178,7 @@ public final class ChordPilotController: ObservableObject {
     public func setSynth(_ on: Bool) { audioUnit?.set(.synth, on ? 1 : 0) }
     public func setHostSync(_ on: Bool) { audioUnit?.set(.hostSync, on ? 1 : 0) }
     public func setProgression(_ i: Int) { audioUnit?.set(.progression, AUValue(i)) }
+    public func setPiano(_ m: PianoModel) { audioUnit?.set(.piano, AUValue(PianoModel.all.firstIndex(of: m) ?? 0)) }
     public func resetContext() { engine.reset(); lastCommitted = nil; recompute() }
 
     public func shiftOctave(_ delta: Int) {

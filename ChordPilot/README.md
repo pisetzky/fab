@@ -1,4 +1,7 @@
-# ChordPilot – piano che suggerisce gli accordi (iPad · AUv3)
+# ChordPilot – piano che suggerisce gli accordi
+
+Versioni: **iPad** (app Standalone + plug-in AUv3, in questa cartella), **desktop** VST3 / AU / Standalone
+per Mac, Windows e Linux (`../Desktop`, JUCE), **web** installabile su iPad dalla Home (`../WebApp`).
 
 Suona una nota o un accordo: i tasti degli accordi e delle note **successive** si illuminano,
 nello stile del genere scelto dal menu a tendina (20 generi).
@@ -21,6 +24,9 @@ nello stile del genere scelto dal menu a tendina (20 generi).
   e la manda in uscita MIDI per registrarla.
 - **Schede accordo**: tocca un suggerimento per ascoltarlo (e inviarlo in MIDI).
 - Complessità: *Semplici* (triadi), *Del genere*, *Ricchi* (settime/none).
+- **10 pianoforti** (menu a tendina): Gran Coda, Brillante, Verticale, Elettrico a lamelle, Elettrico ad ance,
+  Elettrico FM, Honky-Tonk, Clavicembalo, Toy Piano, Felt Piano – sintesi additiva/FM, stessi parametri su tutte le versioni.
+- Tema grafico **aurora boreale**.
 - **Plug-in AUv3** in due versioni: strumento (`aumu`) e MIDI FX (`aumi`); ogni genere è un preset di fabbrica;
   tutti i parametri sono automatizzabili e salvati nel progetto della DAW.
 - **App standalone**: audio su qualsiasi uscita (anche schede USB), MIDI con collegamento automatico

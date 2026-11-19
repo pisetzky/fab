@@ -94,7 +94,9 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
             p("sync", "Sync DAW", .hostSync, 0, 1, .boolean),
             p("play", "Genre Player", .play, 0, 1, .boolean),
             p("progression", "Progressione", .progression, 0, 5, .indexed, (1...6).map { "Progressione \($0)" }),
-            p("bpm", "BPM", .bpm, 40, 220, .BPM)
+            p("bpm", "BPM", .bpm, 40, 220, .BPM),
+            p("piano", "Pianoforte", .piano, 0, AUValue(PianoModel.all.count - 1), .indexed,
+              PianoModel.all.map { "\($0.emoji) \($0.name)" })
         ]
         params[Int(ParamAddress.volume.rawValue)].value = 0.8
         params[Int(ParamAddress.synth.rawValue)].value = kernel.isMIDIEffect ? 0 : 1
@@ -131,6 +133,7 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         case .play: return cp_atomic_load(kernel.playRequest) != 0 ? 1 : 0
         case .progression: return AUValue(progressionIndex)
         case .bpm: return AUValue(kernel.internalBPM)
+        case .piano: return AUValue(kernel.pianoType)
         case .none: return 0
         }
     }
@@ -167,6 +170,7 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
             progressionIndex = max(0, min(genre.progressions.count - 1, Int(value.rounded())))
             rebuild = true
         case .bpm: kernel.internalBPM = Double(value)
+        case .piano: kernel.pianoType = max(0, min(PianoModel.all.count - 1, Int(value.rounded())))
         case .none: break
         }
         if rebuild { schedulePatternRebuild() } else { notifyStateChange() }

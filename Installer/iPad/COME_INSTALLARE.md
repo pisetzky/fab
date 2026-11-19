@@ -13,7 +13,22 @@ Requisiti: iPadOS 16 o successivo (tutti gli iPad usciti dal 2017 in poi).
 
 ---
 
-## Opzione A – Con Xcode (consigliata, gratis)
+## Subito, senza computer – versione web (ChordPilot.html)
+
+Funziona già adesso su questo iPad, senza Xcode e senza Apple ID sviluppatore:
+
+1. Apri il link di ChordPilot (o il file `ChordPilot.html` pubblicato su un sito) in **Safari**.
+2. Tocca **Condividi** → **Aggiungi alla schermata Home** → **Aggiungi**.
+3. Apri ChordPilot dalla Home: si apre a schermo intero come un'app.
+
+Ha i 20 generi, i 10 pianoforti, i suggerimenti luminosi e il Genre Player.
+Non ha il plug-in AUv3 per le DAW e il MIDI esterno (Safari su iPad non supporta il Web MIDI):
+per quelli serve l'app nativa qui sotto.
+
+> Aprire `ChordPilot.html` direttamente dall'app File dell'iPad mostra solo un'anteprima:
+> usa il link in Safari.
+
+## Opzione A – App nativa con Xcode (consigliata, gratis)
 
 Serve un Mac con Xcode 15 o 16 e un Apple ID (anche gratuito).
 

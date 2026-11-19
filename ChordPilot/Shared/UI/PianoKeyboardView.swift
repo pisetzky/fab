@@ -85,8 +85,8 @@ final class PianoKeyboardUIView: UIView {
     private func color(for h: KeyHighlight) -> UIColor {
         switch h.role {
         case .primary: return accent
-        case .alternative: return UIColor(red: 0.35, green: 0.85, blue: 1.0, alpha: 1)
-        case .melody: return UIColor(red: 1.0, green: 0.78, blue: 0.25, alpha: 1)
+        case .alternative: return Aurora.uiViolet
+        case .melody: return Aurora.uiCyan
         case .signature: return accent
         case .scale: return UIColor.white
         }
@@ -146,14 +146,14 @@ final class PianoKeyboardUIView: UIView {
 
         // Genre player notes: green bar on top.
         if isPattern {
-            UIColor(red: 0.3, green: 1.0, blue: 0.55, alpha: 0.9).setFill()
+            Aurora.uiMagenta.withAlphaComponent(0.9).setFill()
             UIBezierPath(roundedRect: CGRect(x: f.minX + 3, y: 4, width: f.width - 6, height: 6), cornerRadius: 3).fill()
         }
 
         // Held notes: bright outline.
         if isHeld {
             ctx.saveGState()
-            UIColor.systemBlue.setStroke()
+            UIColor(hex: 0x19D3C5).setStroke()
             path.lineWidth = 3
             path.stroke()
             ctx.restoreGState()

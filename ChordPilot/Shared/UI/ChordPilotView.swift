@@ -15,6 +15,62 @@ extension UIColor {
     }
 }
 
+/// Northern-lights colour palette used across the whole interface.
+public enum Aurora {
+    public static let night = Color(hex: 0x050B1A)
+    public static let deep = Color(hex: 0x0B1736)
+    public static let green = Color(hex: 0x3DFFB0)
+    public static let teal = Color(hex: 0x19D3C5)
+    public static let cyan = Color(hex: 0x5CD6FF)
+    public static let violet = Color(hex: 0x8E6CFF)
+    public static let magenta = Color(hex: 0xE05BFF)
+    public static let pink = Color(hex: 0xFF6FB5)
+
+    static let uiGreen = UIColor(hex: 0x3DFFB0)
+    static let uiViolet = UIColor(hex: 0x8E6CFF)
+    static let uiCyan = UIColor(hex: 0x5CD6FF)
+    static let uiMagenta = UIColor(hex: 0xE05BFF)
+}
+
+/// Slowly drifting aurora curtains behind the interface.
+struct AuroraBackground: View {
+    @State private var drift = false
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Aurora.night, Aurora.deep, Color(hex: 0x071026)], startPoint: .top, endPoint: .bottom)
+            band(Aurora.green, x: drift ? -0.25 : 0.1, y: -0.32, w: 1.5, h: 0.32, angle: -12, opacity: 0.45)
+            band(Aurora.teal, x: drift ? 0.3 : -0.05, y: -0.18, w: 1.2, h: 0.24, angle: 8, opacity: 0.35)
+            band(Aurora.violet, x: drift ? 0.05 : 0.4, y: -0.4, w: 1.1, h: 0.26, angle: -4, opacity: 0.4)
+            band(Aurora.magenta, x: drift ? 0.45 : 0.2, y: -0.46, w: 0.8, h: 0.16, angle: 14, opacity: 0.25)
+            // Stars
+            Canvas { ctx, size in
+                var seed: UInt64 = 42
+                for _ in 0..<70 {
+                    seed = seed &* 6364136223846793005 &+ 1442695040888963407
+                    let x = CGFloat(seed >> 40) / CGFloat(1 << 24) * size.width
+                    seed = seed &* 6364136223846793005 &+ 1442695040888963407
+                    let y = CGFloat(seed >> 40) / CGFloat(1 << 24) * size.height * 0.6
+                    let r = CGFloat((seed >> 20) & 3) * 0.4 + 0.5
+                    ctx.fill(Path(ellipseIn: CGRect(x: x, y: y, width: r, height: r)), with: .color(.white.opacity(0.55)))
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .onAppear { withAnimation(.easeInOut(duration: 14).repeatForever(autoreverses: true)) { drift.toggle() } }
+    }
+
+    private func band(_ c: Color, x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, angle: Double, opacity: Double) -> some View {
+        GeometryReader { geo in
+            Ellipse()
+                .fill(LinearGradient(colors: [c.opacity(0), c.opacity(opacity), c.opacity(0)], startPoint: .leading, endPoint: .trailing))
+                .frame(width: geo.size.width * w, height: geo.size.height * h)
+                .rotationEffect(.degrees(angle))
+                .blur(radius: 50)
+                .position(x: geo.size.width * (0.5 + x), y: geo.size.height * (0.5 + y))
+        }
+    }
+}
+
 /// The complete ChordPilot interface, used both by the standalone app and inside DAWs (AUv3 view).
 public struct ChordPilotView: View {
     @ObservedObject var controller: ChordPilotController
@@ -25,7 +81,7 @@ public struct ChordPilotView: View {
         self.trailingToolbar = trailingToolbar
     }
 
-    private var accent: Color { Color(hex: controller.genre.colorHex) }
+    private var accent: Color { Aurora.green }
 
     public var body: some View {
         GeometryReader { geo in
@@ -47,16 +103,7 @@ public struct ChordPilotView: View {
 
     // MARK: Background
 
-    private var background: some View {
-        ZStack {
-            LinearGradient(colors: [Color(hex: 0x0B0D17), Color(hex: 0x141428)], startPoint: .top, endPoint: .bottom)
-            RadialGradient(colors: [accent.opacity(0.28), .clear], center: .topLeading, startRadius: 10, endRadius: 520)
-            RadialGradient(colors: [Color(hex: 0x33C4FF, alpha: 0.12), .clear], center: .bottomTrailing,
-                           startRadius: 10, endRadius: 600)
-        }
-        .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.6), value: controller.genre.id)
-    }
+    private var background: some View { AuroraBackground() }
 
     // MARK: Header
 
@@ -65,13 +112,14 @@ public struct ChordPilotView: View {
             HStack(spacing: 6) {
                 Image(systemName: "pianokeys.inverse")
                     .font(.system(size: compact ? 18 : 22, weight: .semibold))
-                    .foregroundStyle(LinearGradient(colors: [accent, .white], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .foregroundStyle(LinearGradient(colors: [Aurora.green, Aurora.violet], startPoint: .topLeading, endPoint: .bottomTrailing))
                 if !compact {
                     Text("ChordPilot").font(.system(size: 22, weight: .heavy, design: .rounded))
                 }
             }
 
             genreMenu
+            pianoMenu
             keyMenu
 
             Picker("Complessità", selection: Binding(get: { controller.complexity },
@@ -98,9 +146,26 @@ public struct ChordPilotView: View {
                 }
             }
         } label: {
-            pill(icon: nil, text: "\(controller.genre.emoji) \(controller.genre.name)", tint: accent, bold: true)
+            pill(icon: nil, text: "\(controller.genre.emoji) \(controller.genre.name)", tint: Aurora.green, bold: true)
         }
         .accessibilityLabel("Genere musicale")
+    }
+
+    private var pianoMenu: some View {
+        Menu {
+            if controller.isMIDIEffect {
+                Text("Versione MIDI FX: il suono lo produce lo strumento collegato")
+            }
+            ForEach(PianoModel.all) { m in
+                Button { controller.setPiano(m) } label: {
+                    if m == controller.piano { Label("\(m.emoji)  \(m.name)", systemImage: "checkmark") }
+                    else { Text("\(m.emoji)  \(m.name)") }
+                }
+            }
+        } label: {
+            pill(icon: nil, text: "\(controller.piano.emoji) \(controller.piano.name)", tint: Aurora.violet, bold: true)
+        }
+        .accessibilityLabel("Tipo di pianoforte")
     }
 
     private var keyMenu: some View {
@@ -132,7 +197,7 @@ public struct ChordPilotView: View {
                 Image(systemName: controller.isPlaying ? "stop.fill" : "play.fill")
                     .font(.system(size: 16, weight: .bold))
                     .frame(width: 38, height: 34)
-                    .background(Capsule().fill(controller.isPlaying ? Color.green.opacity(0.85) : accent.opacity(0.85)))
+                    .background(Capsule().fill(controller.isPlaying ? Aurora.magenta.opacity(0.9) : accent.opacity(0.85)))
                     .foregroundColor(.black)
             }
             .accessibilityLabel(controller.isPlaying ? "Ferma Genre Player" : "Avvia Genre Player")
@@ -224,8 +289,8 @@ public struct ChordPilotView: View {
     private var legend: some View {
         HStack(spacing: 10) {
             legendItem(accent, "Accordo migliore")
-            legendItem(Color(red: 0.35, green: 0.85, blue: 1), "Alternative")
-            legendItem(Color(red: 1, green: 0.78, blue: 0.25), "Melodia")
+            legendItem(Aurora.violet, "Alternative")
+            legendItem(Aurora.cyan, "Melodia")
         }
         .font(.system(size: 11, weight: .medium))
         .foregroundColor(.white.opacity(0.7))
@@ -252,7 +317,7 @@ public struct ChordPilotView: View {
 
     private func suggestionCard(_ s: ChordSuggestion, compact: Bool) -> some View {
         let isBest = s.rank == 0
-        let tint = isBest ? accent : Color(red: 0.35, green: 0.85, blue: 1)
+        let tint = isBest ? accent : Aurora.violet
         return VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(isBest ? "PROSSIMO" : "#\(s.rank + 1)")
@@ -292,7 +357,7 @@ public struct ChordPilotView: View {
                 Text(controller.chordName(c))
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(Capsule().fill(active ? Color.green.opacity(0.85) : Color.white.opacity(0.07)))
+                    .background(Capsule().fill(active ? Aurora.magenta.opacity(0.9) : Color.white.opacity(0.07)))
                     .foregroundColor(active ? .black : .white.opacity(0.8))
             }
             Spacer()
@@ -305,7 +370,7 @@ public struct ChordPilotView: View {
     private var keyboardArea: some View {
         HStack(spacing: 6) {
             octaveButton("chevron.left", -1)
-            PianoKeyboard(controller: controller, accent: UIColor(hex: controller.genre.colorHex))
+            PianoKeyboard(controller: controller, accent: Aurora.uiGreen)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .shadow(color: accent.opacity(0.25), radius: 14)
             octaveButton("chevron.right", 1)

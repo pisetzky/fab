@@ -8,6 +8,12 @@ final class ChordPilotCoreTests: XCTestCase {
         XCTAssertEqual(Set(Genre.all.map { $0.id }).count, 20)
     }
 
+    func testTenPianos() {
+        XCTAssertEqual(PianoModel.all.count, 10)
+        XCTAssertEqual(Set(PianoModel.all.map { $0.id }).count, 10)
+        XCTAssertTrue(PianoModel.all.allSatisfy { $0.partials.count == 6 && $0.decay > 0 && $0.release > 0 })
+    }
+
     func testAllProgressionsParse() {
         for g in Genre.all {
             XCTAssertEqual(g.chordRhythm.count, 16, g.name)

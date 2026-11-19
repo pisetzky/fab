@@ -1,6 +1,7 @@
 import Foundation
 import AudioToolbox
 import AVFoundation
+import ChordPilotCore
 
 /// One event of the genre-player loop as stored for the audio thread.
 struct RawPatternEvent {
@@ -9,20 +10,31 @@ struct RawPatternEvent {
     var velocity: UInt8
 }
 
-/// A simple, warm electric/acoustic-piano style voice built from decaying harmonics.
+/// One synth voice. Harmonic phases live in the kernel's flat arrays (index = voice * 6 + harmonic).
 struct PianoVoice {
     var active = false
     var note: Int32 = -1
     var lane: UInt8 = 0          // 0 = played by the user / host, 1 = genre player
-    var phase: Float = 0
-    var increment: Float = 0
     var gain: Float = 0
     var env: Float = 0
     var bright: Float = 1
     var attack: Float = 0
+    var attackInc: Float = 0.01
     var decayCoef: Float = 0.9999
     var brightCoef: Float = 0.999
     var releaseCoef: Float = 0.999
+    // FM (electric pianos)
+    var fmPhase: Float = 0
+    var fmInc: Float = 0
+    var fmIndex: Float = 0
+    var fmCoef: Float = 0.999
+    // Detuned copy of the fundamental (honky-tonk / chorus)
+    var detPhase: Float = 0
+    var detInc: Float = 0
+    var detAmp: Float = 0
+    // Hammer / pluck noise
+    var click: Float = 0
+    var clickCoef: Float = 0.99
     var releasing = false
     var heldByPedal = false
     var age: UInt64 = 0
@@ -94,6 +106,7 @@ final class ChordPilotDSPKernel {
         patternTotals.initialize(repeating: 16, count: 3)
         patternStepsPerChord.initialize(repeating: 16, count: 3)
         midiBytes.initialize(repeating: 0, count: 3)
+        prepareBuffers()
     }
 
     deinit {
@@ -105,6 +118,8 @@ final class ChordPilotDSPKernel {
         patternTotals.deallocate()
         patternStepsPerChord.deallocate()
         midiBytes.deallocate()
+        modelTable.deallocate()
+        partialPhase.deallocate(); partialInc.deallocate(); partialAmp.deallocate()
         cp_ring_destroy(uiRing)
         cp_ring_destroy(lastNotesRing)
         cp_atomic_destroy(playRequest)
@@ -284,6 +299,7 @@ final class ChordPilotDSPKernel {
         case ParamAddress.hostSync.rawValue: hostSync = value > 0.5
         case ParamAddress.play.rawValue: cp_atomic_store(playRequest, value > 0.5 ? 1 : 0)
         case ParamAddress.bpm.rawValue: internalBPM = Double(value)
+        case ParamAddress.piano.rawValue: pianoType = Int(value.rounded())
         default: break
         }
     }
@@ -370,6 +386,39 @@ final class ChordPilotDSPKernel {
 
     // MARK: Synth
 
+    /// Flattened copy of `PianoModel.all` so the audio thread never touches Swift arrays.
+    static let modelStride = 18
+    private let modelTable: UnsafeMutablePointer<Float> = {
+        let models = PianoModel.all
+        let t = UnsafeMutablePointer<Float>.allocate(capacity: models.count * ChordPilotDSPKernel.modelStride)
+        for (i, m) in models.enumerated() {
+            let b = i * ChordPilotDSPKernel.modelStride
+            for k in 0..<6 { t[b + k] = k < m.partials.count ? m.partials[k] : 0 }
+            t[b + 6] = m.inharmonicity; t[b + 7] = m.decay; t[b + 8] = m.brightDecay; t[b + 9] = m.release
+            t[b + 10] = m.attack; t[b + 11] = m.detuneCents; t[b + 12] = m.fmRatio; t[b + 13] = m.fmIndex
+            t[b + 14] = m.fmDecay; t[b + 15] = m.click; t[b + 16] = m.velocityBrightness; t[b + 17] = m.gain
+        }
+        return t
+    }()
+    /// Selected piano (index into `PianoModel.all`). Read once per note-on.
+    var pianoType: Int = 0
+    private let modelCount = PianoModel.all.count
+    private lazy var partialPhase = Self.makeBuffer(maxVoices * 6)
+    private lazy var partialInc = Self.makeBuffer(maxVoices * 6)
+    private lazy var partialAmp = Self.makeBuffer(maxVoices * 6)
+    private var noiseSeed: UInt32 = 22222
+
+    private static func makeBuffer(_ n: Int) -> UnsafeMutablePointer<Float> {
+        let p = UnsafeMutablePointer<Float>.allocate(capacity: n)
+        p.initialize(repeating: 0, count: n)
+        return p
+    }
+
+    /// Must be called once from `init`-time code paths before rendering (touches the lazy buffers).
+    func prepareBuffers() {
+        _ = partialPhase; _ = partialInc; _ = partialAmp
+    }
+
     private func noteOn(_ note: Int, velocity: UInt8, lane: UInt8) {
         // Re-use a voice already playing this note in the same lane, else a free one, else the oldest.
         var slot = -1
@@ -384,23 +433,54 @@ final class ChordPilotDSPKernel {
         }
         if slot < 0 { slot = oldestIdx }
         voiceAge &+= 1
-        let freq = 440.0 * pow(2.0, (Double(note) - 69.0) / 12.0)
+
+        let mi = max(0, min(modelCount - 1, pianoType))
+        let m = modelTable + mi * Self.modelStride
         let sr = Float(sampleRate)
+        let f0 = Float(440.0 * pow(2.0, (Double(note) - 69.0) / 12.0))
+        let vel = Float(velocity) / 127.0
         // Lower notes ring longer, higher notes decay faster - like real strings.
-        let decaySeconds = Float(max(0.8, 6.0 - Double(note - 21) * 0.06))
-        let v = Float(velocity) / 127.0
-        voices[slot] = PianoVoice(
-            active: true, note: Int32(note), lane: lane, phase: 0,
-            increment: Float(freq) / sr,
-            gain: (0.12 + 0.88 * v * v) * (lane == 1 ? 0.75 : 1.0),
-            env: 1,
-            bright: 0.6 + 0.4 * v,
-            // A re-triggered voice continues from its current level instead of clicking to zero.
-            attack: voices[slot].active ? min(1, voices[slot].env * voices[slot].attack) : 0,
-            decayCoef: expf(-1.0 / (decaySeconds * sr)),
-            brightCoef: expf(-1.0 / (0.35 * decaySeconds * sr)),
-            releaseCoef: expf(-1.0 / (0.12 * sr)),
-            releasing: false, heldByPedal: false, age: voiceAge)
+        let keyScale = max(0.18, 1.0 - Float(note - 21) * 0.0105)
+        let decaySeconds = max(0.25, m[7] * keyScale)
+        let velBright = 1 - m[16] + m[16] * vel
+        let nyquist = sr * 0.45
+
+        let base = slot * 6
+        for k in 0..<6 {
+            let h = Float(k + 1)
+            let freq = f0 * h * sqrtf(1 + m[6] * h * h)
+            partialInc[base + k] = freq / sr
+            // Harmonics above Nyquist are muted (no aliasing); higher harmonics follow velocity.
+            partialAmp[base + k] = freq < nyquist ? m[k] * (k == 0 ? 1 : powf(velBright, Float(k) * 0.6)) : 0
+            if !voices[slot].active { partialPhase[base + k] = 0 }
+        }
+        let wasActive = voices[slot].active
+        var v = PianoVoice()
+        v.active = true
+        v.note = Int32(note)
+        v.lane = lane
+        v.gain = (0.12 + 0.88 * vel * vel) * m[17] * (lane == 1 ? 0.75 : 1.0)
+        v.env = 1
+        v.bright = 1
+        // A re-triggered voice continues from its current level instead of clicking to zero.
+        v.attack = wasActive ? min(1, voices[slot].env * voices[slot].attack) : 0
+        v.attackInc = 1.0 / max(1, m[10] * sr)
+        v.decayCoef = expf(-1.0 / (decaySeconds * sr))
+        v.brightCoef = expf(-1.0 / (max(0.05, m[8] * decaySeconds) * sr))
+        v.releaseCoef = expf(-1.0 / (max(0.02, m[9] * 0.4) * sr))
+        v.fmInc = m[12] > 0 ? f0 * m[12] / sr : 0
+        v.fmIndex = m[13] * (0.35 + 0.65 * vel)
+        v.fmCoef = expf(-1.0 / (max(0.01, m[14]) * sr))
+        v.fmPhase = wasActive ? voices[slot].fmPhase : 0
+        if m[11] > 0 {
+            v.detInc = f0 * powf(2, m[11] / 1200) / sr
+            v.detAmp = m[11] > 8 ? 0.7 : 0.35
+            v.detPhase = wasActive ? voices[slot].detPhase : 0.25
+        }
+        v.click = m[15] * (0.4 + 0.6 * vel)
+        v.clickCoef = expf(-1.0 / (0.004 * sr))
+        v.age = voiceAge
+        voices[slot] = v
     }
 
     private func noteOff(_ note: Int, lane: UInt8) {
@@ -420,28 +500,60 @@ final class ChordPilotDSPKernel {
     private func synthesize(_ abl: UnsafeMutableAudioBufferListPointer, from start: Int, to end: Int) {
         guard abl.count > 0, let left = abl[0].mData?.assumingMemoryBound(to: Float.self) else { return }
         let right = abl.count > 1 ? abl[1].mData?.assumingMemoryBound(to: Float.self) : nil
-        let attackInc: Float = 1.0 / (0.004 * Float(sampleRate))
         let twoPi: Float = 2 * .pi
         let target = synthEnabled && !isMIDIEffect ? volume : 0
         for i in 0..<maxVoices where voices[i].active {
             var v = voices[i]
+            let base = i * 6
             let pan = 0.5 + Float(Int(v.note) - 60) * 0.008
             let gl = cosf(pan * .pi / 2), gr = sinf(pan * .pi / 2)
+            let a0 = partialAmp[base], a1 = partialAmp[base + 1], a2 = partialAmp[base + 2]
+            let a3 = partialAmp[base + 3], a4 = partialAmp[base + 4], a5 = partialAmp[base + 5]
+            let i0 = partialInc[base], i1 = partialInc[base + 1], i2 = partialInc[base + 2]
+            let i3 = partialInc[base + 3], i4 = partialInc[base + 4], i5 = partialInc[base + 5]
+            var p0 = partialPhase[base], p1 = partialPhase[base + 1], p2 = partialPhase[base + 2]
+            var p3 = partialPhase[base + 3], p4 = partialPhase[base + 4], p5 = partialPhase[base + 5]
             for f in start..<end {
-                if v.attack < 1 { v.attack = min(1, v.attack + attackInc) }
-                v.env = v.releasing ? v.env * v.releaseCoef : v.env * v.decayCoef
+                if v.attack < 1 { v.attack = min(1, v.attack + v.attackInc) }
+                v.env *= v.releasing ? v.releaseCoef : v.decayCoef
                 v.bright *= v.brightCoef
-                let p = v.phase * twoPi
-                var s = sinf(p)
-                s += 0.45 * v.bright * sinf(2 * p)
-                s += 0.22 * v.bright * v.bright * sinf(3 * p)
-                s += 0.08 * v.bright * v.bright * sinf(5 * p)
-                let out = s * v.gain * v.attack * v.env
+                let b = v.bright
+                // Fundamental, optionally frequency-modulated (electric pianos).
+                var fm: Float = 0
+                if v.fmInc > 0 {
+                    fm = v.fmIndex * sinf(v.fmPhase * twoPi)
+                    v.fmIndex *= v.fmCoef
+                    v.fmPhase += v.fmInc
+                    if v.fmPhase >= 1 { v.fmPhase -= floorf(v.fmPhase) }
+                }
+                var s = a0 * sinf(p0 * twoPi + fm)
+                if a1 > 0 { s += a1 * b * sinf(p1 * twoPi) }
+                if a2 > 0 { s += a2 * b * b * sinf(p2 * twoPi) }
+                if a3 > 0 { s += a3 * b * b * sinf(p3 * twoPi) }
+                if a4 > 0 { s += a4 * b * b * b * sinf(p4 * twoPi) }
+                if a5 > 0 { s += a5 * b * b * b * sinf(p5 * twoPi) }
+                if v.detAmp > 0 {
+                    s += v.detAmp * a0 * sinf(v.detPhase * twoPi)
+                    v.detPhase += v.detInc
+                    if v.detPhase >= 1 { v.detPhase -= 1 }
+                }
+                if v.click > 0.0001 {
+                    noiseSeed = noiseSeed &* 1664525 &+ 1013904223
+                    s += v.click * (Float(noiseSeed >> 9) / 4194304.0 - 1.0)
+                    v.click *= v.clickCoef
+                }
+                let out = s * v.gain * v.attack * v.env * 0.6
                 left[f] += out * gl
                 right?[f] += out * gr
-                v.phase += v.increment
-                if v.phase >= 1 { v.phase -= 1 }
+                p0 += i0; if p0 >= 1 { p0 -= 1 }
+                p1 += i1; if p1 >= 1 { p1 -= 1 }
+                p2 += i2; if p2 >= 1 { p2 -= 1 }
+                p3 += i3; if p3 >= 1 { p3 -= 1 }
+                p4 += i4; if p4 >= 1 { p4 -= 1 }
+                p5 += i5; if p5 >= 1 { p5 -= 1 }
             }
+            partialPhase[base] = p0; partialPhase[base + 1] = p1; partialPhase[base + 2] = p2
+            partialPhase[base + 3] = p3; partialPhase[base + 4] = p4; partialPhase[base + 5] = p5
             if v.releasing && v.env < 0.0005 { v.active = false }
             if !v.releasing && v.env < 0.0003 { v.active = false }
             voices[i] = v
@@ -464,5 +576,5 @@ final class ChordPilotDSPKernel {
 
 /// Parameter addresses shared by the Audio Unit, the UI and the host.
 public enum ParamAddress: AUParameterAddress {
-    case genre = 0, keyRoot, keyMinor, complexity, volume, synth, hostSync, play, progression, bpm
+    case genre = 0, keyRoot, keyMinor, complexity, volume, synth, hostSync, play, progression, bpm, piano
 }

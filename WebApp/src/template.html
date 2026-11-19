@@ -1,0 +1,597 @@
+<title>ChordPilot</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ChordPilot">
+<meta name="theme-color" content="#050b1a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one-screen instrument – toolbar, "what you play → what comes next", suggestion cards, full-width keyboard. */
+:root {
+  /* Northern lights over a polar night: a single, deliberately dark world. */
+  --night: #050b1a;
+  --deep: #0b1736;
+  --panel: rgba(16, 30, 64, 0.62);
+  --line: rgba(140, 190, 255, 0.16);
+  --fg: #eaf2ff;
+  --muted: #9fb2d6;
+  --green: #3dffb0;      /* best next chord */
+  --teal: #19d3c5;       /* held keys */
+  --cyan: #5cd6ff;       /* melody notes */
+  --violet: #8e6cff;     /* alternative chords */
+  --magenta: #e05bff;    /* genre player */
+  --white-key: #eef4ff;
+  --black-key: #0a1022;
+  --font-display: "Space Grotesk", "Avenir Next", system-ui, sans-serif;
+  --font-body: "Inter", -apple-system, system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  background: var(--night); color: var(--fg); font-family: var(--font-body); font-size: 14px;
+  overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation;
+}
+#sky { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.app {
+  position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; gap: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px;
+}
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.brand { display: flex; align-items: center; gap: 8px; margin-right: 6px; }
+.brand svg { width: 28px; height: 28px; }
+.brand b { font-family: var(--font-display); font-size: 22px; letter-spacing: -0.3px;
+  background: linear-gradient(90deg, var(--green), var(--cyan) 55%, var(--violet)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.field { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 12px; height: 38px;
+  border-radius: 999px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.field label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.field select { appearance: none; -webkit-appearance: none; background: transparent; border: 0; color: var(--fg);
+  font: 600 15px var(--font-body); padding-right: 16px; max-width: 220px; cursor: pointer; }
+.field select:focus-visible, button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.field::after { content: ""; position: absolute; right: 12px; top: 50%; width: 6px; height: 6px; margin-top: -5px;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); pointer-events: none; }
+.field.genre { border-color: rgba(61,255,176,0.45); }
+.field.piano { border-color: rgba(142,108,255,0.55); }
+.seg { display: flex; height: 38px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); padding: 3px; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: 600 13px var(--font-body); padding: 0 12px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: rgba(61,255,176,0.18); color: var(--fg); }
+.btn { height: 38px; min-width: 38px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
+  color: var(--fg); font: 600 14px var(--font-body); padding: 0 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.btn.play { background: linear-gradient(135deg, var(--green), var(--teal)); color: #022018; border: 0; }
+.btn.play[aria-pressed="true"] { background: linear-gradient(135deg, var(--magenta), var(--violet)); color: #fff; }
+.bpm { font-variant-numeric: tabular-nums; min-width: 72px; text-align: center; font-weight: 600; }
+.spacer { flex: 1; }
+.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.toggle input { accent-color: var(--green); width: 16px; height: 16px; }
+
+.status { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 18px; }
+.status .cap { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.status .now { font: 700 30px/1.1 var(--font-display); min-width: 120px; }
+.status .arrow { color: var(--green); font-size: 22px; padding-bottom: 4px; }
+.status .scale { font-weight: 600; font-size: 15px; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); margin-left: auto; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+.cards { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 6px; scrollbar-width: none; min-height: 104px; }
+.cards::-webkit-scrollbar { display: none; }
+.card { flex: 0 0 150px; text-align: left; border-radius: 16px; padding: 10px 12px; cursor: pointer; color: var(--fg);
+  background: linear-gradient(145deg, rgba(142,108,255,0.16), rgba(255,255,255,0.03)); border: 1px solid rgba(142,108,255,0.35);
+  display: flex; flex-direction: column; gap: 2px; font-family: var(--font-body); transition: transform .12s; }
+.card:active { transform: scale(0.97); }
+.card.best { background: linear-gradient(145deg, rgba(61,255,176,0.28), rgba(25,211,197,0.06)); border: 2px solid var(--green);
+  box-shadow: 0 0 22px rgba(61,255,176,0.35); }
+.card .top { display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: var(--violet); }
+.card.best .top { color: var(--green); }
+.card .roman { font-family: Georgia, serif; color: var(--muted); letter-spacing: 0; font-weight: 700; }
+.card .name { font: 700 26px/1.15 var(--font-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .why { font-size: 11px; color: var(--muted); line-height: 1.3; height: 29px; overflow: hidden; }
+
+.player { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 28px; font-size: 13px; }
+.player .cap { font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: var(--muted); margin-right: 4px; }
+.player span.ch { padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.06); font-weight: 700; }
+.player span.ch.on { background: var(--magenta); color: #fff; box-shadow: 0 0 14px rgba(224,91,255,0.6); }
+
+.kbwrap { flex: 1; min-height: 150px; display: flex; gap: 6px; }
+.oct { width: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font-size: 18px; cursor: pointer; }
+#kb { position: relative; flex: 1; border-radius: 12px; overflow: hidden; touch-action: none;
+  box-shadow: 0 0 30px rgba(61,255,176,0.18), inset 0 6px 10px rgba(0,0,0,0.35); background: #02050d; }
+.key { position: absolute; top: 0; border-radius: 0 0 8px 8px; }
+.key.w { background: var(--white-key); border: 1px solid rgba(5,11,26,0.35); height: 100%; z-index: 1; }
+.key.b { background: var(--black-key); border: 1px solid rgba(0,0,0,0.6); height: 62%; z-index: 2; border-radius: 0 0 6px 6px; }
+.key .glow { position: absolute; inset: 0; border-radius: inherit; opacity: 0; transition: opacity .12s; }
+.key .dot { position: absolute; left: 50%; bottom: 12px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; opacity: 0; }
+.key .lbl { position: absolute; left: 0; right: 0; bottom: 26px; text-align: center; font-size: 12px; font-weight: 600; color: #3a4a6b; pointer-events: none; }
+.key.b .lbl { color: #c9d6f5; bottom: 22px; font-size: 10px; }
+.key[data-role="4"] .glow { opacity: 1; background: linear-gradient(180deg, rgba(61,255,176,0.25), var(--green)); box-shadow: 0 0 18px var(--green); }
+.key[data-role="3"] .glow { opacity: 1; background: linear-gradient(180deg, rgba(142,108,255,0.15), rgba(142,108,255,0.75)); }
+.key[data-role="2"] .glow { opacity: 1; background: linear-gradient(180deg, rgba(92,214,255,0.1), rgba(92,214,255,0.6)); }
+.key[data-role="1"] .dot { opacity: 1; background: var(--green); border-radius: 2px; transform: rotate(45deg); }
+.key[data-role="0"] .dot { opacity: 0.8; background: #8ea2c8; }
+.key.b[data-role="0"] .dot { background: #5a6c94; }
+.key[data-role="4"] .lbl { color: #022018; font-weight: 800; }
+.key.b[data-role="4"] .lbl { color: #022018; }
+.key.held { box-shadow: inset 0 0 0 3px var(--teal); filter: brightness(0.86); }
+.key.pat::before { content: ""; position: absolute; left: 4px; right: 4px; top: 5px; height: 6px; border-radius: 3px; background: var(--magenta); z-index: 3; box-shadow: 0 0 10px var(--magenta); }
+.hidehints .key[data-role="0"] .dot, .hidehints .key[data-role="1"] .dot { opacity: 0; }
+
+.hint { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none;
+  padding: 10px 18px; border-radius: 999px; background: rgba(5,11,26,0.82); color: var(--fg); font-weight: 600; border: 1px solid var(--line); white-space: nowrap; }
+
+dialog { border: 1px solid var(--line); border-radius: 18px; background: #0d1a3a; color: var(--fg); max-width: min(460px, calc(100vw - 32px)); padding: 22px; }
+dialog::backdrop { background: rgba(2,5,13,0.7); }
+dialog h2 { font-family: var(--font-display); margin: 0 0 10px; font-size: 22px; }
+dialog ol { padding-left: 20px; line-height: 1.6; color: var(--muted); }
+dialog ol b { color: var(--fg); }
+dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+.midi { font-size: 12px; color: var(--muted); }
+
+@media (max-width: 720px) {
+  .brand b { display: none; }
+  .status .now { font-size: 24px; }
+  .legend { display: none; }
+  .card { flex-basis: 118px; }
+  .card .why { display: none; }
+  .field select { max-width: 150px; font-size: 14px; }
+}
+@media (max-height: 560px) { .card .why { display: none; } .cards { min-height: 80px; } .status .now { font-size: 22px; } }
+@media (prefers-reduced-motion: reduce) { #sky { display: none; } .card { transition: none; } }
+</style>
+
+<canvas id="sky" aria-hidden="true"></canvas>
+<div class="app" id="app">
+  <div class="bar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3dffb0"/><stop offset="1" stop-color="#8e6cff"/></linearGradient></defs><rect x="2" y="8" width="28" height="20" rx="4" fill="url(#lg)"/><rect x="9" y="8" width="4" height="11" rx="1.5" fill="#050b1a"/><rect x="19" y="8" width="4" height="11" rx="1.5" fill="#050b1a"/></svg>
+      <b>ChordPilot</b>
+    </div>
+    <div class="field genre"><label for="genre">Genere</label><select id="genre"></select></div>
+    <div class="field piano"><label for="piano">Piano</label><select id="piano"></select></div>
+    <div class="field"><label for="key">Tonalità</label><select id="key"></select></div>
+    <div class="seg" role="group" aria-label="Complessità accordi">
+      <button type="button" data-cx="0">Semplici</button><button type="button" data-cx="1">Del genere</button><button type="button" data-cx="2">Ricchi</button>
+    </div>
+    <span class="spacer"></span>
+    <button class="btn play" id="play" type="button" aria-pressed="false">▶ Genre Player</button>
+    <button class="btn" id="bpmDown" type="button" aria-label="BPM meno">−</button>
+    <span class="bpm" id="bpm">110 BPM</span>
+    <button class="btn" id="bpmUp" type="button" aria-label="BPM più">+</button>
+    <button class="btn" id="more" type="button" aria-label="Impostazioni e installazione">⚙︎</button>
+  </div>
+
+  <div class="status">
+    <div><div class="cap">Stai suonando</div><div class="now" id="now">—</div></div>
+    <div class="arrow">→</div>
+    <div><div class="cap">Scala</div><div class="scale" id="scale"></div></div>
+    <div class="legend">
+      <span><i style="background:var(--green)"></i>Accordo migliore</span>
+      <span><i style="background:var(--violet)"></i>Alternative</span>
+      <span><i style="background:var(--cyan)"></i>Melodia</span>
+      <span><i style="background:var(--magenta)"></i>Genre Player</span>
+    </div>
+  </div>
+
+  <div class="cards" id="cards" aria-label="Accordi suggeriti"></div>
+  <div class="player" id="player"></div>
+
+  <div class="kbwrap">
+    <button class="oct" id="octDown" type="button" aria-label="Ottava giù">‹</button>
+    <div id="kb" role="application" aria-label="Tastiera di pianoforte">
+      <div class="hint" id="hint">Tocca un tasto per attivare l'audio</div>
+    </div>
+    <button class="oct" id="octUp" type="button" aria-label="Ottava su">›</button>
+  </div>
+</div>
+
+<dialog id="settings">
+  <h2>Impostazioni</h2>
+  <div class="row">
+    <label class="toggle"><input type="checkbox" id="italian"> Nomi italiani (Do Re Mi)</label>
+    <label class="toggle"><input type="checkbox" id="hints" checked> Mostra note della scala</label>
+    <label class="toggle"><input type="checkbox" id="midiOut" checked> Invia MIDI alle uscite collegate</label>
+    <div class="field"><label for="octaves">Ottave</label><select id="octaves"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div>
+    <div class="field"><label for="prog">Progressione</label><select id="prog"></select></div>
+    <div class="midi" id="midiStatus"></div>
+  </div>
+  <h2>Installa su iPad</h2>
+  <ol>
+    <li>Apri questa pagina in <b>Safari</b> sull'iPad.</li>
+    <li>Tocca <b>Condividi</b> (il quadrato con la freccia).</li>
+    <li>Scegli <b>Aggiungi alla schermata Home</b> → <b>Aggiungi</b>.</li>
+    <li>Apri <b>ChordPilot</b> dalla Home: si apre a schermo intero come un'app.</li>
+  </ol>
+  <p class="midi">La versione con plug-in AUv3 per GarageBand, Logic e AUM e il MIDI esterno automatico è l'app nativa (cartella iPad del pacchetto).</p>
+  <form method="dialog"><button class="btn play" type="submit">Chiudi</button></form>
+</dialog>
+
+<script>
+/*ENGINE*/
+</script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("cp." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("cp." + k, JSON.stringify(v)); } catch {} }
+  };
+
+  // ---------- State ----------
+  const state = {
+    genre: Math.min(19, store.get("genre", 0)), piano: Math.min(9, store.get("piano", 0)),
+    key: store.get("key", 0), complexity: store.get("cx", 1), italian: store.get("it", true),
+    hints: store.get("hints", true), octaves: store.get("oct", 3), low: store.get("low", 48),
+    prog: 0, bpm: CP.GENRES[0].bpm, playing: false, midiOut: true
+  };
+  state.bpm = CP.GENRES[state.genre].bpm;
+  const engine = new CP.Engine(CP.GENRES[state.genre]);
+  engine.complexity = state.complexity;
+  const held = new Set();            // notes held by the musician
+  const patternOn = new Set();       // notes sounding from the genre player
+  let result = null, stableTimer = null, lastCommitted = null;
+
+  const names = () => state.italian ? CP.ITALIAN : null;
+  const noteName = (pc, flats) => (state.italian ? CP.ITALIAN : flats ? CP.FLATS : CP.SHARPS)[CP.mod12(pc)];
+  const cName = (c) => CP.chordName(c, result ? CP.prefersFlats(result.key) : false, names());
+
+  // ---------- Audio: 10 piano models with Web Audio ----------
+  let ctx = null, master = null, noiseBuf = null;
+  const voices = new Map();   // key "lane:note" -> voice
+  function audio() {
+    if (ctx) { if (ctx.state === "suspended") ctx.resume(); return ctx; }
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -10; comp.knee.value = 12; comp.ratio.value = 3;
+    master = ctx.createGain(); master.gain.value = 0.55;
+    master.connect(comp); comp.connect(ctx.destination);
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    $("hint").hidden = true;
+    return ctx;
+  }
+
+  function voiceOn(note, vel, lane, when) {
+    if (!ctx) return;
+    const t = Math.max(when ?? ctx.currentTime, ctx.currentTime);
+    const id = lane + ":" + note;
+    if (voices.has(id)) voiceOff(note, lane, t, 0.015);
+    const m = CP.PIANOS[state.piano];
+    const f0 = 440 * Math.pow(2, (note - 69) / 12), v = vel / 127;
+    const keyScale = Math.max(0.18, 1 - (note - 21) * 0.0105);
+    const decay = Math.max(0.25, m.decay * keyScale), velBright = 1 - m.velBright + m.velBright * v;
+    const out = ctx.createGain();
+    const peak = (0.12 + 0.88 * v * v) * m.gain * (lane === 1 ? 0.7 : 1) * 0.16;
+    out.gain.setValueAtTime(0, t);
+    out.gain.linearRampToValueAtTime(peak, t + m.attack + 0.001);
+    out.gain.setTargetAtTime(0, t + m.attack, decay / 4.6);
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) { pan.pan.value = Math.max(-0.6, Math.min(0.6, (note - 60) * 0.016)); out.connect(pan); pan.connect(master); } else out.connect(master);
+    const nodes = [];
+    m.partials.forEach((a, k) => {
+      if (!a) return;
+      const h = k + 1, f = f0 * h * Math.sqrt(1 + m.B * h * h);
+      if (f > ctx.sampleRate * 0.45) return;
+      const o = ctx.createOscillator(); o.frequency.value = f;
+      const g = ctx.createGain();
+      const amp = a * (k === 0 ? 1 : Math.pow(velBright, k * 0.6));
+      g.gain.setValueAtTime(amp, t);
+      if (k > 0) g.gain.setTargetAtTime(0, t, Math.max(0.05, m.brightDecay * decay) / (1.2 * k));
+      o.connect(g); g.connect(out); o.start(t); nodes.push(o);
+      if (k === 0 && m.fmRatio > 0) {
+        const mod = ctx.createOscillator(); mod.frequency.value = f0 * m.fmRatio;
+        const mg = ctx.createGain(); const dev = m.fmIndex * (0.35 + 0.65 * v) * f0 * m.fmRatio * 0.35;
+        mg.gain.setValueAtTime(dev, t); mg.gain.setTargetAtTime(0, t, m.fmDecay);
+        mod.connect(mg); mg.connect(o.frequency); mod.start(t); nodes.push(mod);
+      }
+    });
+    if (m.detune > 0) {
+      const o = ctx.createOscillator(); o.frequency.value = f0 * Math.pow(2, m.detune / 1200);
+      const g = ctx.createGain(); g.gain.value = m.detune > 8 ? 0.7 : 0.35;
+      o.connect(g); g.connect(out); o.start(t); nodes.push(o);
+    }
+    if (m.click > 0) {
+      const n = ctx.createBufferSource(); n.buffer = noiseBuf;
+      const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = Math.min(9000, f0 * 4);
+      const g = ctx.createGain(); g.gain.setValueAtTime(m.click * (0.4 + 0.6 * v) * 2.2, t); g.gain.setTargetAtTime(0, t, 0.006);
+      n.connect(hp); hp.connect(g); g.connect(out); n.start(t); n.stop(t + 0.05);
+    }
+    const stopAt = t + decay * 1.6 + 0.2;
+    nodes.forEach(o => o.stop(stopAt));
+    voices.set(id, { out, nodes, release: m.release });
+  }
+
+  function voiceOff(note, lane, when, rel) {
+    const id = lane + ":" + note, vc = voices.get(id);
+    if (!vc || !ctx) return;
+    voices.delete(id);
+    const t = Math.max(when ?? ctx.currentTime, ctx.currentTime), r = rel ?? vc.release;
+    vc.out.gain.cancelScheduledValues(t);
+    vc.out.gain.setTargetAtTime(0, t, Math.max(0.01, r * 0.4));
+    vc.nodes.forEach(o => { try { o.stop(t + r * 3 + 0.05); } catch {} });
+  }
+
+  // ---------- MIDI (Web MIDI where the browser offers it: Chrome / Edge on computers) ----------
+  let midiOutputs = [];
+  function sendMIDI(bytes) { if (state.midiOut) midiOutputs.forEach(o => { try { o.send(bytes); } catch {} }); }
+  function initMIDI() {
+    if (!navigator.requestMIDIAccess) { $("midiStatus").textContent = "MIDI esterno: non disponibile in questo browser (Safari su iPad non lo supporta)."; return; }
+    navigator.requestMIDIAccess().then(access => {
+      const refresh = () => {
+        const ins = [...access.inputs.values()];
+        ins.forEach(i => { i.onmidimessage = e => onMIDI(e.data); });
+        midiOutputs = [...access.outputs.values()];
+        $("midiStatus").textContent = ins.length ? "MIDI collegato: " + ins.map(i => i.name).join(", ") : "Nessuna tastiera MIDI collegata.";
+      };
+      access.onstatechange = refresh; refresh();
+    }).catch(() => { $("midiStatus").textContent = "MIDI esterno: accesso non consentito qui."; });
+  }
+  let sustain = false; const sustained = new Set();
+  function onMIDI(d) {
+    const type = d[0] & 0xf0;
+    if (type === 0x90 && d[2] > 0) noteDown(d[1], d[2], false);
+    else if (type === 0x80 || type === 0x90) noteUp(d[1], false);
+    else if (type === 0xb0 && d[1] === 64) { sustain = d[2] >= 64; if (!sustain) { sustained.forEach(n => { if (!held.has(n)) voiceOff(n, 0); }); sustained.clear(); } }
+  }
+
+  // ---------- Playing ----------
+  function noteDown(n, vel, echo = true) {
+    audio();
+    voiceOn(n, vel, 0);
+    if (echo) sendMIDI([0x90, n, vel]);
+    held.add(n); engine.noteOn(n, vel);
+    changed();
+  }
+  function noteUp(n, echo = true) {
+    if (!held.has(n)) return;
+    held.delete(n);
+    if (sustain) sustained.add(n); else voiceOff(n, 0);
+    if (echo) sendMIDI([0x80, n, 0]);
+    changed();
+  }
+  function changed() {
+    clearTimeout(stableTimer);
+    stableTimer = setTimeout(() => {
+      if (result && result.current && !(lastCommitted && lastCommitted.root === result.current.root && lastCommitted.quality === result.current.quality)) {
+        engine.commit(result.current); lastCommitted = result.current; recompute();
+      }
+    }, 250);
+    recompute();
+  }
+  function playSuggestion(s) {
+    audio();
+    const notes = s.voicing.slice();
+    let b = Math.floor(notes[0] / 12) * 12 + s.chord.root; while (b >= notes[0]) b -= 12; if (b >= 24) notes.unshift(b);
+    notes.forEach(n => { voiceOn(n, 96, 2); sendMIDI([0x90, n, 96]); });
+    setTimeout(() => notes.forEach(n => { voiceOff(n, 2); sendMIDI([0x80, n, 0]); }), 900);
+    engine.didPlay(s.voicing, s.chord); lastCommitted = s.chord;
+    recompute();
+  }
+
+  // ---------- Genre player (look-ahead scheduler on the audio clock) ----------
+  let pattern = null, nextStep = 0, nextTime = 0, timer = null, chordIdx = 0;
+  function rebuildPattern() {
+    const g = CP.GENRES[state.genre];
+    const k = engine.fixedKey || (result ? result.key : { tonic: g.defaultTonic, minor: g.prefersMinor });
+    if (state.playing) { patternOn.forEach(n => { voiceOff(n, 1); sendMIDI([0x80, n, 0]); }); patternOn.clear(); }
+    pattern = CP.buildPattern(g, k, state.prog, state.complexity);
+    renderPlayer();
+  }
+  function stopPattern() {
+    clearInterval(timer); timer = null;
+    patternOn.forEach(n => { voiceOff(n, 1); sendMIDI([0x80, n, 0]); }); patternOn.clear();
+    state.playing = false; $("play").setAttribute("aria-pressed", "false"); $("play").textContent = "▶ Genre Player";
+    renderKeys(); renderPlayer();
+  }
+  function startPattern() {
+    audio(); rebuildPattern();
+    state.playing = true; nextStep = 0; nextTime = ctx.currentTime + 0.06;
+    $("play").setAttribute("aria-pressed", "true"); $("play").textContent = "■ Stop";
+    timer = setInterval(schedule, 25); schedule();
+  }
+  function schedule() {
+    const spb = 60 / state.bpm / 4;
+    while (nextTime < ctx.currentTime + 0.12) {
+      const s = nextStep % pattern.total, t = nextTime;
+      for (const e of pattern.events) {
+        if (e.step !== s) continue;
+        if (e.vel > 0) voiceOn(e.note, e.vel, 1, t); else voiceOff(e.note, 1, t);
+      }
+      const delay = Math.max(0, (t - ctx.currentTime) * 1000);
+      const evs = pattern.events.filter(e => e.step === s);
+      setTimeout(() => {
+        evs.forEach(e => { if (e.vel > 0) { patternOn.add(e.note); sendMIDI([0x90, e.note, e.vel]); } else { patternOn.delete(e.note); sendMIDI([0x80, e.note, 0]); } });
+        chordIdx = Math.floor(s / pattern.spc);
+        renderKeys(); renderPlayer();
+      }, delay);
+      nextStep++; nextTime += spb;
+    }
+  }
+
+  // ---------- Suggestions ----------
+  function recompute() {
+    engine.lowNote = state.low; engine.highNote = state.low + state.octaves * 12;
+    result = engine.suggest([...held]);
+    renderStatus(); renderCards(); renderKeys();
+  }
+
+  // ---------- Rendering ----------
+  function renderStatus() {
+    const flats = CP.prefersFlats(result.key);
+    $("now").textContent = result.current ? cName(result.current) : held.size ? [...held].sort((a,b)=>a-b).map(n => noteName(n, flats)).join(" ") : "—";
+    $("scale").textContent = noteName(result.key.tonic, flats) + " " + CP.SCALE_NAMES[result.scale] + (state.key === 0 ? " · auto" : "");
+  }
+  function renderCards() {
+    const el = $("cards"); el.textContent = "";
+    result.chords.forEach(s => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "card" + (s.rank === 0 ? " best" : "");
+      b.setAttribute("aria-label", "Suona " + cName(s.chord));
+      b.innerHTML = `<span class="top"><span>${s.rank === 0 ? "PROSSIMO" : "#" + (s.rank + 1)}</span><span class="roman"></span></span><span class="name"></span><span class="why"></span>`;
+      b.querySelector(".roman").textContent = s.roman;
+      b.querySelector(".name").textContent = cName(s.chord);
+      b.querySelector(".why").textContent = s.reason;
+      b.addEventListener("click", () => playSuggestion(s));
+      el.appendChild(b);
+    });
+  }
+  function renderPlayer() {
+    const el = $("player"); el.textContent = "";
+    const cap = document.createElement("span"); cap.className = "cap"; cap.textContent = "GENRE PLAYER"; el.appendChild(cap);
+    if (!pattern) rebuildPatternSilently();
+    pattern.chords.forEach((c, i) => {
+      const s = document.createElement("span");
+      s.className = "ch" + (state.playing && i === chordIdx ? " on" : "");
+      s.textContent = cName(c); el.appendChild(s);
+    });
+  }
+  function rebuildPatternSilently() {
+    const g = CP.GENRES[state.genre];
+    pattern = CP.buildPattern(g, engine.fixedKey || { tonic: g.defaultTonic, minor: g.prefersMinor }, state.prog, state.complexity);
+  }
+
+  // Keyboard
+  const kb = $("kb"); let keyEls = new Map();
+  const isBlack = n => [1,3,6,8,10].includes(CP.mod12(n));
+  function buildKeyboard() {
+    keyEls.forEach(el => el.remove()); keyEls = new Map();
+    const hi = state.low + state.octaves * 12;
+    const whites = []; for (let n = state.low; n <= hi; n++) if (!isBlack(n)) whites.push(n);
+    const w = 100 / whites.length;
+    for (let n = state.low; n <= hi; n++) {
+      const el = document.createElement("div");
+      el.className = "key " + (isBlack(n) ? "b" : "w"); el.dataset.note = n;
+      el.innerHTML = '<span class="glow"></span><span class="dot"></span><span class="lbl"></span>';
+      if (!isBlack(n)) { const i = whites.indexOf(n); el.style.left = (i * w) + "%"; el.style.width = w + "%"; }
+      else {
+        const i = whites.indexOf(n - 1), bw = w * 0.62, sh = [1,6].includes(CP.mod12(n)) ? -0.08 : [3,10].includes(CP.mod12(n)) ? 0.08 : 0;
+        el.style.left = ((i + 1) * w - bw / 2 + sh * bw) + "%"; el.style.width = bw + "%";
+      }
+      kb.appendChild(el); keyEls.set(n, el);
+    }
+    renderKeys();
+  }
+  function renderKeys() {
+    if (!result) return;
+    const flats = CP.prefersFlats(result.key);
+    keyEls.forEach((el, n) => {
+      const h = result.highlights.get(n);
+      const role = h ? String(h.role) : "";
+      if (el.dataset.role !== role) el.dataset.role = role;
+      el.classList.toggle("held", held.has(n));
+      el.classList.toggle("pat", patternOn.has(n));
+      const show = CP.mod12(n) === 0 || (h && h.role === 4) || held.has(n);
+      const txt = show ? noteName(n, flats) + (CP.mod12(n) === 0 ? String(Math.floor(n / 12) - 1) : "") : "";
+      const lbl = el.lastChild; if (lbl.textContent !== txt) lbl.textContent = txt;
+    });
+    document.body.classList.toggle("hidehints", !state.hints);
+  }
+
+  // Multi-touch with glissando
+  const pointers = new Map();
+  function keyAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const k = el && el.closest && el.closest(".key");
+    if (!k || !kb.contains(k)) return null;
+    const r = k.getBoundingClientRect();
+    const vel = Math.round(45 + Math.max(0, Math.min(1, (y - r.top) / r.height)) * 82);
+    return { note: +k.dataset.note, vel };
+  }
+  const othersHold = (id, n) => [...pointers].some(([pid, v]) => pid !== id && v === n);
+  kb.addEventListener("pointerdown", e => {
+    e.preventDefault(); kb.setPointerCapture(e.pointerId);
+    const k = keyAt(e.clientX, e.clientY); if (!k) return;
+    pointers.set(e.pointerId, k.note); if (!held.has(k.note)) noteDown(k.note, k.vel);
+  });
+  kb.addEventListener("pointermove", e => {
+    if (!pointers.has(e.pointerId)) return;
+    const k = keyAt(e.clientX, e.clientY), cur = pointers.get(e.pointerId);
+    if ((k ? k.note : null) === cur) return;
+    if (cur !== null && !othersHold(e.pointerId, cur)) noteUp(cur);
+    pointers.set(e.pointerId, k ? k.note : null);
+    if (k && !held.has(k.note)) noteDown(k.note, k.vel);
+  });
+  const end = e => { if (!pointers.has(e.pointerId)) return; const cur = pointers.get(e.pointerId); pointers.delete(e.pointerId); if (cur !== null && !othersHold(e.pointerId, cur)) noteUp(cur); };
+  kb.addEventListener("pointerup", end); kb.addEventListener("pointercancel", end); kb.addEventListener("lostpointercapture", end);
+
+  // Computer keyboard: A W S E D F T G Y H U J K
+  const map = "awsedftgyhujk"; const down = new Set();
+  window.addEventListener("keydown", e => {
+    if (e.target.tagName === "SELECT" || e.repeat) return;
+    const i = map.indexOf(e.key.toLowerCase()); if (i < 0) return;
+    const n = state.low + 12 + i; down.add(n); noteDown(n, 100);
+  });
+  window.addEventListener("keyup", e => { const i = map.indexOf(e.key.toLowerCase()); if (i < 0) return; const n = state.low + 12 + i; if (down.delete(n)) noteUp(n); });
+
+  // ---------- Controls ----------
+  CP.GENRES.forEach((g, i) => $("genre").add(new Option(`${g.emoji} ${g.name}`, i)));
+  CP.PIANOS.forEach((p, i) => $("piano").add(new Option(`${p.emoji} ${p.name}`, i)));
+  $("key").add(new Option("✨ Auto", 0));
+  for (let pc = 0; pc < 12; pc++) { $("key").add(new Option(CP.ITALIAN[pc] + " / " + CP.SHARPS[pc], pc + 1)); $("key").add(new Option(CP.ITALIAN[pc] + " minore / " + CP.SHARPS[pc] + "m", -(pc + 1))); }
+  function fillProg() {
+    $("prog").textContent = "";
+    CP.GENRES[state.genre].progressions.forEach((p, i) => $("prog").add(new Option(p.text.replace(/ /g, " – "), i)));
+    $("prog").value = state.prog;
+  }
+  function applyKey() { engine.fixedKey = state.key === 0 ? null : { tonic: Math.abs(state.key) - 1, minor: state.key < 0 }; }
+  $("genre").value = state.genre; $("piano").value = state.piano; $("key").value = state.key;
+  $("italian").checked = state.italian; $("hints").checked = state.hints; $("octaves").value = state.octaves;
+  applyKey(); fillProg();
+  const segBtns = [...document.querySelectorAll(".seg button")];
+  const paintSeg = () => segBtns.forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.cx === state.complexity)));
+  paintSeg();
+  segBtns.forEach(b => b.addEventListener("click", () => { state.complexity = +b.dataset.cx; engine.complexity = state.complexity; store.set("cx", state.complexity); paintSeg(); afterChange(); }));
+  $("genre").addEventListener("change", e => {
+    state.genre = +e.target.value; state.prog = 0; state.bpm = CP.GENRES[state.genre].bpm;
+    engine.genre = CP.GENRES[state.genre]; engine.reset(); lastCommitted = null; store.set("genre", state.genre);
+    fillProg(); afterChange();
+  });
+  $("piano").addEventListener("change", e => { state.piano = +e.target.value; store.set("piano", state.piano); audio(); voiceOn(60, 90, 2); setTimeout(() => voiceOff(60, 2), 500); });
+  $("key").addEventListener("change", e => { state.key = +e.target.value; store.set("key", state.key); applyKey(); afterChange(); });
+  $("prog").addEventListener("change", e => { state.prog = +e.target.value; afterChange(); });
+  $("italian").addEventListener("change", e => { state.italian = e.target.checked; store.set("it", state.italian); afterChange(); });
+  $("hints").addEventListener("change", e => { state.hints = e.target.checked; store.set("hints", state.hints); renderKeys(); });
+  $("midiOut").addEventListener("change", e => { state.midiOut = e.target.checked; });
+  $("octaves").addEventListener("change", e => { state.octaves = +e.target.value; store.set("oct", state.octaves); buildKeyboard(); recompute(); });
+  $("octDown").addEventListener("click", () => { state.low = Math.max(24, state.low - 12); store.set("low", state.low); buildKeyboard(); recompute(); });
+  $("octUp").addEventListener("click", () => { state.low = Math.min(84, state.low + 12); store.set("low", state.low); buildKeyboard(); recompute(); });
+  $("bpmDown").addEventListener("click", () => { state.bpm = Math.max(40, state.bpm - 2); paintBPM(); });
+  $("bpmUp").addEventListener("click", () => { state.bpm = Math.min(220, state.bpm + 2); paintBPM(); });
+  const paintBPM = () => { $("bpm").textContent = state.bpm + " BPM"; };
+  $("play").addEventListener("click", () => state.playing ? stopPattern() : startPattern());
+  $("more").addEventListener("click", () => { $("settings").showModal(); });
+  function afterChange() {
+    paintBPM(); recompute();
+    if (state.playing) { const p = state.prog; rebuildPattern(); state.prog = p; } else { rebuildPatternSilently(); renderPlayer(); }
+  }
+
+  // ---------- Aurora sky ----------
+  const sky = $("sky"), sc = sky.getContext("2d");
+  const stars = [...Array(90)].map(() => [Math.random(), Math.random() * 0.65, Math.random() * 1.2 + 0.3, Math.random() * 6]);
+  function drawSky(t) {
+    const w = sky.width = innerWidth * devicePixelRatio, h = sky.height = innerHeight * devicePixelRatio;
+    const g = sc.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#050b1a"); g.addColorStop(0.6, "#0b1736"); g.addColorStop(1, "#071026");
+    sc.fillStyle = g; sc.fillRect(0, 0, w, h);
+    stars.forEach(([x, y, r, p]) => { sc.globalAlpha = 0.35 + 0.35 * Math.sin(t / 900 + p); sc.fillStyle = "#fff"; sc.beginPath(); sc.arc(x * w, y * h, r * devicePixelRatio, 0, 7); sc.fill(); });
+    sc.globalCompositeOperation = "lighter";
+    const bands = [["61,255,176", 0.32, 0.5, 0.0], ["25,211,197", 0.22, 0.42, 1.7], ["142,108,255", 0.18, 0.36, 3.1], ["224,91,255", 0.10, 0.3, 4.4]];
+    bands.forEach(([rgb, yy, a, ph]) => {
+      for (let i = 0; i < 26; i++) {
+        const x = (i / 25) * w, wave = Math.sin(t / 5200 + i * 0.45 + ph) * 0.06 + Math.sin(t / 3100 + i * 0.9 + ph) * 0.03;
+        const y = (yy + wave) * h, hh = h * (0.18 + 0.1 * Math.sin(t / 4000 + i + ph));
+        const gr = sc.createLinearGradient(0, y - hh, 0, y + hh * 0.3);
+        gr.addColorStop(0, `rgba(${rgb},0)`); gr.addColorStop(0.75, `rgba(${rgb},${a * 0.22})`); gr.addColorStop(1, `rgba(${rgb},0)`);
+        sc.fillStyle = gr; sc.globalAlpha = 1; sc.fillRect(x - w / 40, y - hh, w / 18, hh * 1.3);
+      }
+    });
+    sc.globalCompositeOperation = "source-over"; sc.globalAlpha = 1;
+  }
+  let last = 0;
+  function loop(t) { if (t - last > 66) { drawSky(t); last = t; } requestAnimationFrame(loop); }
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) drawSky(0); else requestAnimationFrame(loop);
+
+  // ---------- Start ----------
+  paintBPM(); buildKeyboard(); recompute(); rebuildPatternSilently(); renderPlayer(); initMIDI();
+  document.addEventListener("visibilitychange", () => { if (document.hidden && state.playing) stopPattern(); });
+})();
+</script>

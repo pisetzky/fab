@@ -5,60 +5,80 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ChordPilot – Installa</title>
 <style>
-  :root { --bg:#0b0d17; --card:#161a2e; --text:#f2f3f8; --muted:#a3a8c3; --accent:#ff4fd8; --ok:#2dffa8; --soon:#ffc233; }
+  :root { --night:#050b1a; --deep:#0b1736; --card:rgba(16,30,64,.7); --line:rgba(140,190,255,.16); --fg:#eaf2ff; --muted:#9fb2d6;
+          --green:#3dffb0; --teal:#19d3c5; --violet:#8e6cff; --magenta:#e05bff; --soon:#ffc233; color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-         background: radial-gradient(circle at 15% 0%, rgba(255,79,216,.25), transparent 45%), var(--bg);
-         color: var(--text); min-height: 100vh; padding: 40px 16px; }
-  main { max-width: 980px; margin: 0 auto; }
-  h1 { font-size: 40px; margin: 0 0 6px; letter-spacing: -.5px; }
-  p.lead { color: var(--muted); margin: 0 0 32px; font-size: 17px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; }
-  .card { background: var(--card); border: 1px solid rgba(255,255,255,.08); border-radius: 18px; padding: 22px; display:flex; flex-direction:column; gap:10px; }
-  .card h2 { margin: 0; font-size: 21px; }
-  .badge { align-self:flex-start; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
-  .ok { background: rgba(45,255,168,.15); color: var(--ok); }
-  .soon { background: rgba(255,194,51,.15); color: var(--soon); }
+  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--fg); min-height: 100vh;
+         background:
+           radial-gradient(ellipse 70% 30% at 20% 8%, rgba(61,255,176,.28), transparent 70%),
+           radial-gradient(ellipse 60% 25% at 70% 4%, rgba(142,108,255,.30), transparent 70%),
+           radial-gradient(ellipse 50% 20% at 50% 16%, rgba(25,211,197,.18), transparent 70%),
+           linear-gradient(var(--night), var(--deep));
+         padding: 40px max(16px, env(safe-area-inset-left)); }
+  main { max-width: 1040px; margin: 0 auto; }
+  h1 { font-size: 42px; margin: 0 0 6px; letter-spacing: -.5px;
+       background: linear-gradient(90deg, var(--green), var(--teal) 50%, var(--violet)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p.lead { color: var(--muted); margin: 0 0 30px; font-size: 17px; max-width: 62ch; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; display:flex; flex-direction:column; gap:10px; backdrop-filter: blur(8px); }
+  .card.hero { border-color: rgba(61,255,176,.55); box-shadow: 0 0 30px rgba(61,255,176,.15); }
+  .card h2 { margin: 0; font-size: 20px; }
+  .badge { align-self:flex-start; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(61,255,176,.14); color: var(--green); }
+  .badge.v { background: rgba(142,108,255,.18); color: #b9a6ff; }
   .card p, .card li { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
   .card ul { padding-left: 18px; margin: 0; }
-  a.btn { display:inline-block; margin-top:auto; text-align:center; padding: 11px 14px; border-radius: 12px;
-          background: var(--accent); color: #12001a; font-weight: 700; text-decoration: none; }
-  a.btn.secondary { background: rgba(255,255,255,.1); color: var(--text); }
-  footer { margin-top: 32px; color: var(--muted); font-size: 13px; }
+  a.btn { display:block; margin-top:auto; text-align:center; padding: 11px 14px; border-radius: 12px;
+          background: linear-gradient(135deg, var(--green), var(--teal)); color: #022018; font-weight: 700; text-decoration: none; }
+  a.btn.secondary { background: rgba(255,255,255,.08); color: var(--fg); margin-top: 0; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 13px; line-height: 1.6; }
   code { background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 6px; }
 </style>
 </head>
 <body>
 <main>
-  <h1>🎹 ChordPilot</h1>
-  <p class="lead">Scegli cosa installare. Suona una nota o un accordo e i tasti successivi si illuminano, nello stile del genere che scegli.</p>
+  <h1>ChordPilot</h1>
+  <p class="lead">Suona una nota o un accordo: i tasti successivi si illuminano nello stile del genere scelto (20 generi), con 10 tipi di pianoforte. Scegli cosa installare.</p>
   <div class="grid">
-    <section class="card">
-      <span class="badge ok">Disponibile</span>
-      <h2>iPad – App + plug-in AUv3</h2>
+    <section class="card hero">
+      <span class="badge">Pronta adesso · nessun computer</span>
+      <h2>iPad – versione web</h2>
       <ul>
-        <li>GarageBand, Logic Pro per iPad, Cubasis, AUM, Loopy Pro, BeatMaker…</li>
+        <li>Apri il link in Safari → Condividi → <b>Aggiungi alla schermata Home</b></li>
+        <li>20 generi, 10 pianoforti, Genre Player</li>
+      </ul>
+      <a class="btn" href="https://claude.ai/artifact/R1g2atc9qJ8a2an6N4cGF5">Apri ChordPilot web</a>
+      <a class="btn secondary" href="iPad/ChordPilot.html">File ChordPilot.html</a>
+    </section>
+    <section class="card">
+      <span class="badge v">App nativa</span>
+      <h2>iPad – app + plug-in AUv3 + Standalone</h2>
+      <ul>
+        <li>GarageBand, Logic Pro per iPad, Cubasis, AUM, Loopy Pro…</li>
         <li>MIDI e audio si collegano da soli</li>
-        <li>iPadOS 16 o successivo</li>
       </ul>
       <a class="btn" href="iPad/COME_INSTALLARE.md">Istruzioni iPad</a>
-      <a class="btn secondary" href="iPad/">Apri la cartella (.ipa e sorgente)</a>
     </section>
     <section class="card">
-      <span class="badge ok">Disponibile</span>
-      <h2>Mac Apple Silicon</h2>
-      <p>La stessa app/AUv3 gira su Mac M1–M4: Logic Pro, GarageBand, MainStage.</p>
-      <p>Doppio clic su <code>Installa-Mac.command</code> → opzione 2.</p>
-      <a class="btn secondary" href="Mac/LEGGIMI.md">Istruzioni Mac</a>
+      <span class="badge v">VST3 · AU · Standalone</span>
+      <h2>Mac (Intel e Apple Silicon)</h2>
+      <p>Installer <code>ChordPilot-Mac.pkg</code>: scegli VST3, Audio Unit e/o app Standalone.</p>
+      <a class="btn" href="Mac/LEGGIMI.md">Istruzioni Mac</a>
     </section>
     <section class="card">
-      <span class="badge soon">In arrivo</span>
-      <h2>Windows e Mac Intel – VST3 / AU</h2>
-      <p>Ableton Live, FL Studio, Cubase, Reaper, Studio One, Bitwig… È la prossima fase del progetto.</p>
-      <a class="btn secondary" href="Windows/LEGGIMI.md">Dettagli</a>
+      <span class="badge v">VST3 · Standalone</span>
+      <h2>Windows</h2>
+      <p>Installer <code>ChordPilot-Windows-Setup.exe</code>: scegli plug-in VST3, app Standalone o entrambi.</p>
+      <a class="btn" href="Windows/LEGGIMI.md">Istruzioni Windows</a>
+    </section>
+    <section class="card">
+      <span class="badge v">VST3 · Standalone</span>
+      <h2>Linux</h2>
+      <p>App Standalone e plug-in VST3 già compilati (x86-64).</p>
+      <a class="btn" href="Linux/LEGGIMI.md">Istruzioni Linux</a>
     </section>
   </div>
-  <footer>Contenuto della cartella: <code>INSTALLA.html</code> · <code>Installa-Mac.command</code> · <code>Installa-Windows.bat</code> · <code>iPad/</code> · <code>Mac/</code> · <code>Windows/</code></footer>
+  <footer>Menu di installazione: <code>Installa-Mac.command</code> (Mac) · <code>Installa-Windows.bat</code> (Windows).<br>
+  Cartelle: <code>iPad/</code> · <code>Mac/</code> · <code>Windows/</code> · <code>Linux/</code></footer>
 </main>
 </body>
 </html>
