@@ -60,6 +60,14 @@ body {
 .field.mel { border-color: rgba(255,111,181,0.55); }
 .btn.genius[aria-pressed="true"] { background: linear-gradient(135deg, var(--green), var(--cyan)); color: #022018; border: 0; box-shadow: 0 0 22px rgba(61,255,176,0.55); }
 .genius-on #kb { box-shadow: 0 0 40px rgba(61,255,176,0.45), inset 0 6px 10px rgba(0,0,0,0.35); }
+.btn.drums[aria-pressed="true"] { background: linear-gradient(135deg, rgba(255,194,51,0.5), rgba(255,111,181,0.4)); border-color: rgba(255,194,51,0.8); }
+.timeline { display: flex; flex-wrap: wrap; gap: 6px; min-height: 40px; margin: 10px 0; padding: 8px; border: 1px dashed var(--line); border-radius: 12px; }
+.timeline .ch { padding: 6px 10px; border-radius: 10px; background: rgba(61,255,176,0.15); border: 1px solid rgba(61,255,176,0.4); font-weight: 700; }
+.saved { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.saved .row3 { display: flex; gap: 6px; align-items: center; justify-content: space-between; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+#circle svg { width: 100%; max-width: 420px; display: block; margin: 0 auto; }
+.mods { display: grid; gap: 6px; margin-top: 10px; }
+.mods button { text-align: left; }
 .btn.insp { border-color: rgba(255,194,51,0.6); }
 .insp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-top: 10px; }
 .insp-card { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; background: rgba(255,255,255,0.03); }
@@ -179,6 +187,9 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     <div class="field arp"><label for="arp">Arpeggio</label><select id="arp"></select></div>
     <div class="field mel"><label for="melody">Melodia</label><select id="melody"></select></div>
     <button class="btn genius" id="genius" type="button" aria-pressed="false" title="Ogni tasto diventa la nota giusta, con l'accordo successivo">🧠 Modalità Genio</button>
+    <button class="btn drums" id="drumsBtn" type="button" aria-pressed="false" title="Batteria del genere sotto il Genre Player">🥁 Batteria</button>
+    <button class="btn" id="songBtn" type="button" title="Costruttore di brani e canzoni salvate">📝 Brani</button>
+    <button class="btn" id="circleBtn" type="button" title="Cerchio delle quinte e cambi di tonalità">🎡</button>
     <button class="btn insp" id="inspBtn" type="button" title="10 melodie che seguono la traccia">💡 Ispirazione</button>
     <button class="btn song" id="newSong" type="button" title="Cambia progressione, arpeggio e melodia">🎲 Nuova canzone</button>
     <span class="spacer"></span>
@@ -216,6 +227,32 @@ dialog .row { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; 
     <button class="oct" id="octUp" type="button" aria-label="Ottava su">›</button>
   </div>
 </div>
+
+<dialog id="song">
+  <h2>📝 Costruttore di brani</h2>
+  <p class="pro-note">Ogni accordo che suoni (o che tocchi tra i suggerimenti) entra nella timeline. Riascoltala con ritmo, arpeggio, melodia e batteria del genere.</p>
+  <label class="toggle"><input type="checkbox" id="songRec" checked> Aggiungi gli accordi suonati alla timeline</label>
+  <div class="timeline" id="timeline"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn play" id="tlPlay" type="button">▶ Suona il brano</button>
+    <button class="btn" id="tlUndo" type="button">↶ Togli l'ultimo</button>
+    <button class="btn" id="tlClear" type="button">Svuota</button>
+    <button class="btn" id="tlMidi" type="button">⬇ MIDI</button>
+  </div>
+  <h2 style="margin-top:16px">⭐ Le mie canzoni</h2>
+  <div style="display:flex;gap:8px"><button class="btn" id="saveSong" type="button">⭐ Salva questa canzone</button></div>
+  <div class="saved" id="savedList"></div>
+  <form method="dialog" style="margin-top:12px"><button class="btn" type="submit">Chiudi</button></form>
+</dialog>
+
+<dialog id="circle">
+  <h2>🎡 Cerchio delle quinte</h2>
+  <p class="pro-note">Verde: la tonalità. Viola: gli accordi suggeriti. Tocca una tonalità per sceglierla.</p>
+  <svg viewBox="0 0 400 400" id="circleSvg" role="img" aria-label="Cerchio delle quinte"></svg>
+  <h2 style="margin-top:10px;font-size:18px">Cambi di tonalità consigliati</h2>
+  <div class="mods" id="mods"></div>
+  <form method="dialog" style="margin-top:12px"><button class="btn" type="submit">Chiudi</button></form>
+</dialog>
 
 <dialog id="inspire">
   <h2>💡 Ispirazione</h2>
@@ -810,11 +847,57 @@ const CP = (() => {
     return events;
   }
 
+  // ---------- Drums: one groove per genre (k = kick, s = snare/clap, h = hi-hat), 16 steps ----------
+  const DRUMS = {
+    pop:{k:"x.......x.x.....",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, rock:{k:"x.....x.x.......",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."},
+    hiphop:{k:"x......x..x.....",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, trap:{k:"x.......x..x....",s:"........x.......",h:"x.x.xxx.x.x.x.xx"},
+    rnb:{k:"x......x..x.....",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, jazz:{k:"x.......x.......",s:"......x.......x.",h:"x..xx..xx..xx..x"},
+    blues:{k:"x.....x.x.....x.",s:"....x.......x...",h:"x..xx..xx..xx..x"}, edm:{k:"x...x...x...x...",s:"....x.......x...",h:"..x...x...x...x."},
+    house:{k:"x...x...x...x...",s:"....x.......x...",h:"..x...x...x...x."}, techno:{k:"x...x...x...x...",s:"....x.......x...",h:"xxx.xxx.xxx.xxx."},
+    melodictechno:{k:"x...x...x...x...",s:"....x.......x...",h:"..x...x...x...x."}, afrohouse:{k:"x...x...x...x...",s:"...x..x....x..x.",h:"x.xx.xx.x.xx.xx."},
+    reggaeton:{k:"x...x...x...x...",s:"...x..x....x..x.",h:"x.x.x.x.x.x.x.x."}, latin:{k:"x..x....x..x....",s:"...x..x....x.x..",h:"x.x.x.x.x.x.x.x."},
+    country:{k:"x.......x.......",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, funk:{k:"x..x..x...x.....",s:"....x..x.x..x...",h:"xxxxxxxxxxxxxxxx"},
+    gospel:{k:"x......x..x.....",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, metal:{k:"xxxxxxxxxxxxxxxx",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."},
+    reggae:{k:"........x.......",s:"........x.......",h:"..x...x...x...x."}, classical:{k:"",s:"",h:""},
+    lofi:{k:"x.......x.x.....",s:"....x.......x...",h:"x.x.x.x.x.x.x.x."}, afrobeats:{k:"x..x..x.x.......",s:"....x.......x...",h:"x.xx.xx.x.xx.xx."},
+    cinematic:{k:"x.......x.......",s:"",h:""}
+  };
+  /// Drum hits for `total` steps: [{step, drum: "k"|"s"|"h", vel}].
+  function drumHits(g, total) {
+    const d = DRUMS[g.id] || {}, out = [];
+    for (let s = 0; s < total; s++) for (const drum of ["k", "s", "h"]) {
+      const lane = d[drum] || ""; if (lane[s % 16] !== "x") continue;
+      out.push({ step: s, drum, vel: drum === "h" ? (s % 4 === 0 ? 70 : 50) : (s % 16 === 0 ? 110 : 96) });
+    }
+    return out;
+  }
+
+  // ---------- Key changes: closely related keys with a pivot chord and the new key's dominant ----------
+  function modulations(k) {
+    const targets = [
+      { name: "Dominante", key: { tonic: mod12(k.tonic + 7), minor: k.minor } },
+      { name: "Sottodominante", key: { tonic: mod12(k.tonic + 5), minor: k.minor } },
+      { name: k.minor ? "Relativa maggiore" : "Relativa minore", key: k.minor ? { tonic: mod12(k.tonic + 3), minor: false } : { tonic: mod12(k.tonic + 9), minor: true } },
+      { name: k.minor ? "Parallela maggiore" : "Parallela minore", key: { tonic: k.tonic, minor: !k.minor } },
+      { name: "Un tono sopra (finale da hit)", key: { tonic: mod12(k.tonic + 2), minor: k.minor } }
+    ];
+    const here = diatonic(k, k.minor ? "naturalMinor" : "major", 1);
+    return targets.map(t => {
+      const there = diatonic(t.key, t.key.minor ? "naturalMinor" : "major", 1);
+      const common = here.filter(c => c.root !== k.tonic && c.root !== t.key.tonic && there.some(x => x.root === c.root && x.quality === c.quality));
+      // Prefer the chord that is ii, IV or vi of the new key (the smoothest doors), else any common chord,
+      // else the borrowed iv (parallel keys).
+      const pivot = common.find(c => [2, 5, 9].includes(mod12(c.root - t.key.tonic))) || common[0] || chord(t.key.tonic + 5, "minor");
+      const dominant = chord(t.key.tonic + 7, "dominant7");
+      return { ...t, pivot: pivot || null, dominant, target: chord(t.key.tonic, t.key.minor ? "minor" : "major") };
+    });
+  }
+
   /// Builds the genre-player loop. arp: -1 = genre rhythm, 0..29 = arpeggio. melody: -1 = none, 0..19.
-  function buildPattern(g, k, progIndex = 0, complexity = 1, arp = -1, melody = -1, seed = 0) {
+  function buildPattern(g, k, progIndex = 0, complexity = 1, arp = -1, melody = -1, seed = 0, customChords = null) {
     const pk = progressionKey(g, k);
     const p = g.progressions[Math.max(0, Math.min(progIndex, g.progressions.length - 1))];
-    const chords = p.chords.map(rc => adjust(romanChord(rc, pk), complexity));
+    const chords = customChords && customChords.length ? customChords.slice() : p.chords.map(rc => adjust(romanChord(rc, pk), complexity));
     const spc = 16 * Math.max(1, g.barsPerChord), total = spc * chords.length, events = [];
     const arpSteps = arp >= 0 && arp < ARPEGGIOS.length ? ARPEGGIOS[arp][1] : null;
     let prev = [];
@@ -1061,7 +1144,7 @@ const CP = (() => {
     return [...new Set(lh.concat(rh))].filter(n => n >= 24 && n < melody).sort((x, y) => x - y);
   }
 
-  return { inspire, analyzeTrack, INSPIRE_NAMES, geniusVoicing, VOICING_STYLES, oneFingerTable, styleVoicing, lockToScale, patternToMidi, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
+  return { DRUMS, drumHits, modulations, inspire, analyzeTrack, INSPIRE_NAMES, geniusVoicing, VOICING_STYLES, oneFingerTable, styleVoicing, lockToScale, patternToMidi, mod12, SHARPS, FLATS, ITALIAN, Q, chord, chordName, detect, voicing, detectKey, parseRoman, romanLabel,
            GENRES, PIANOS, SCALE_NAMES, Engine, buildPattern, prefersFlats, pcs, ARPEGGIOS, MELODY_NAMES, MELODY_COUNT, rng };
 })();
 if (typeof module !== "undefined") module.exports = CP;
@@ -1082,6 +1165,7 @@ if (typeof module !== "undefined") module.exports = CP;
     hints: store.get("hints", true), octaves: store.get("oct", 3), low: store.get("low", 48),
     prog: 0, bpm: CP.GENRES[0].bpm, playing: false, midiOut: true,
     arp: store.get("arp", -1), melody: store.get("mel", -1), seed: store.get("seed", 0), genius: store.get("genius", false),
+    drums: store.get("drums", false), timeline: [], songRec: true,
     oneFinger: false, scaleLock: false, strum: 0, humanize: 0, swing: 0, transpose: 0, voicingStyle: 0
   };
   state.bpm = CP.GENRES[state.genre].bpm;
@@ -1172,6 +1256,28 @@ if (typeof module !== "undefined") module.exports = CP;
     vc.nodes.forEach(o => { try { o.stop(t + r * 3 + 0.05); } catch {} });
   }
 
+  // ---------- Drums (synthesised) ----------
+  function drum(kind, vel, t) {
+    if (!ctx) return;
+    const g = ctx.createGain(), v = vel / 127;
+    g.connect(master);
+    if (kind === "k") {
+      const o = ctx.createOscillator(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+      g.gain.setValueAtTime(0.9 * v, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      o.connect(g); o.start(t); o.stop(t + 0.4);
+    } else {
+      const n = ctx.createBufferSource(); n.buffer = noiseBuf; n.loop = true;
+      const f = ctx.createBiquadFilter();
+      f.type = kind === "s" ? "bandpass" : "highpass"; f.frequency.value = kind === "s" ? 1800 : 7500;
+      const dur = kind === "s" ? 0.18 : 0.05;
+      g.gain.setValueAtTime((kind === "s" ? 0.55 : 0.22) * v, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      n.connect(f); f.connect(g); n.start(t); n.stop(t + dur + 0.02);
+      if (kind === "s") { const o = ctx.createOscillator(); o.frequency.value = 185; const og = ctx.createGain();
+        og.gain.setValueAtTime(0.25 * v, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.1); o.connect(og); og.connect(master); o.start(t); o.stop(t + 0.12); }
+    }
+  }
+  const DRUM_NOTE = { k: 36, s: 38, h: 42 };
+
   // ---------- MIDI (Web MIDI where the browser offers it: Chrome / Edge on computers) ----------
   let midiOutputs = [];
   function sendMIDI(bytes) { if (state.midiOut) midiOutputs.forEach(o => { try { o.send(bytes); } catch {} }); }
@@ -1256,7 +1362,7 @@ if (typeof module !== "undefined") module.exports = CP;
         geniusChord = g.chord; geniusAt = now;
         geniusNotes = CP.geniusVoicing(g.chord, n);
         playStrummed(geniusNotes, Math.round(vel * 0.62), 4, 2);
-        engine.commit(g.chord); lastCommitted = g.chord;
+        engine.commit(g.chord); lastCommitted = g.chord; addToTimeline(g.chord);
       }
       pressedToSounding.set(rawPressed, n);
     }
@@ -1287,7 +1393,7 @@ if (typeof module !== "undefined") module.exports = CP;
     clearTimeout(stableTimer);
     stableTimer = setTimeout(() => {
       if (result && result.current && !(lastCommitted && lastCommitted.root === result.current.root && lastCommitted.quality === result.current.quality)) {
-        engine.commit(result.current); lastCommitted = result.current; recompute();
+        engine.commit(result.current); lastCommitted = result.current; addToTimeline(result.current); recompute();
       }
     }, 250);
     recompute();
@@ -1299,7 +1405,7 @@ if (typeof module !== "undefined") module.exports = CP;
     if (state.voicingStyle > 0) notes = CP.styleVoicing([...CP.pcs(s.chord)], s.chord.root, s.voicing[0] + 12, state.voicingStyle);
     playStrummed(notes, 96, 2, 0);
     setTimeout(() => notes.forEach(n => { voiceOff(n, 2); sendMIDI([0x80, n, 0]); }), 900);
-    engine.didPlay(s.voicing, s.chord); lastCommitted = s.chord;
+    engine.didPlay(s.voicing, s.chord); lastCommitted = s.chord; addToTimeline(s.chord);
     recompute();
   }
 
@@ -1340,6 +1446,16 @@ if (typeof module !== "undefined") module.exports = CP;
     while (nextTime < ctx.currentTime + 0.12) {
       const s = nextStep % pattern.total, t = nextTime;
       const sw = (s % 2 === 1) ? spb * state.swing / 100 : 0;   // swing delays the off-beat 16ths
+      if (state.drums) {
+        const g = CP.GENRES[state.genre], d = CP.DRUMS[g.id] || {};
+        for (const kind of ["k", "s", "h"]) {
+          if ((d[kind] || "")[s % 16] !== "x") continue;
+          const vel = humanVel(kind === "h" ? (s % 4 === 0 ? 70 : 50) : (s % 16 === 0 ? 110 : 96));
+          drum(kind, vel, t + sw + humanTime());
+          const dt = Math.max(0, (t + sw - ctx.currentTime) * 1000);
+          setTimeout(() => { sendMIDI([0x99, DRUM_NOTE[kind], vel]); setTimeout(() => sendMIDI([0x89, DRUM_NOTE[kind], 0]), 60); }, dt);
+        }
+      }
       let chordIdx2 = 0;
       for (const e of pattern.events) {
         if (e.step !== s) continue;
@@ -1532,6 +1648,102 @@ if (typeof module !== "undefined") module.exports = CP;
     });
   }
   $("inspBtn").addEventListener("click", () => $("inspire").showModal());
+
+  // ---- Drums ----
+  const paintDrums = () => $("drumsBtn").setAttribute("aria-pressed", String(state.drums));
+  paintDrums();
+  $("drumsBtn").addEventListener("click", () => { state.drums = !state.drums; store.set("drums", state.drums); paintDrums(); audio(); });
+
+  // ---- Song builder & saved songs ----
+  function renderTimeline() {
+    const el = $("timeline"); el.textContent = "";
+    if (!state.timeline.length) { el.textContent = "Suona o tocca degli accordi…"; return; }
+    state.timeline.forEach(c => { const s = document.createElement("span"); s.className = "ch"; s.textContent = cName(c); el.appendChild(s); });
+  }
+  function addToTimeline(c) {
+    if (!state.songRec || !c) return;
+    const last = state.timeline[state.timeline.length - 1];
+    if (last && last.root === c.root && last.quality === c.quality) return;
+    state.timeline.push(c); if (state.timeline.length > 16) state.timeline.shift();
+    renderTimeline();
+  }
+  const timelinePattern = () => {
+    const g = CP.GENRES[state.genre];
+    return CP.buildPattern(g, engine.fixedKey || result.key, 0, state.complexity, state.arp, state.melody, state.seed, state.timeline);
+  };
+  $("songBtn").addEventListener("click", () => { renderTimeline(); renderSaved(); $("song").showModal(); });
+  $("songRec").addEventListener("change", e => { state.songRec = e.target.checked; });
+  $("tlPlay").addEventListener("click", () => { if (state.timeline.length) startCustom(timelinePattern()); });
+  $("tlUndo").addEventListener("click", () => { state.timeline.pop(); renderTimeline(); });
+  $("tlClear").addEventListener("click", () => { state.timeline = []; renderTimeline(); });
+  $("tlMidi").addEventListener("click", () => { if (state.timeline.length) exportPattern(timelinePattern(), "ChordPilot-brano.mid"); });
+  function renderSaved() {
+    const list = store.get("songs", []), el = $("savedList"); el.textContent = "";
+    if (!list.length) { el.textContent = "Nessuna canzone salvata."; return; }
+    list.forEach((sg, i) => {
+      const row = document.createElement("div"); row.className = "row3";
+      const label = document.createElement("span");
+      label.textContent = `${sg.name} · ${CP.GENRES[sg.genre].name}`;
+      const load = document.createElement("button"); load.className = "btn"; load.type = "button"; load.textContent = "Carica";
+      const del = document.createElement("button"); del.className = "btn"; del.type = "button"; del.textContent = "✕"; del.setAttribute("aria-label", "Elimina");
+      load.addEventListener("click", () => {
+        Object.assign(state, { genre: sg.genre, piano: sg.piano, arp: sg.arp, melody: sg.melody, seed: sg.seed, prog: sg.prog, bpm: sg.bpm,
+          timeline: (sg.timeline || []).map(c => CP.chord(c.root, c.quality)) });
+        engine.genre = CP.GENRES[state.genre]; engine.reset();
+        $("genre").value = state.genre; $("piano").value = state.piano; $("arp").value = state.arp; $("melody").value = state.melody;
+        fillProg(); $("prog").value = state.prog; renderTimeline(); afterChange();
+      });
+      del.addEventListener("click", () => { const l = store.get("songs", []); l.splice(i, 1); store.set("songs", l); renderSaved(); });
+      const btns = document.createElement("span"); btns.style.display = "flex"; btns.style.gap = "6px"; btns.append(load, del);
+      row.append(label, btns); el.appendChild(row);
+    });
+  }
+  $("saveSong").addEventListener("click", () => {
+    const list = store.get("songs", []);
+    const g = CP.GENRES[state.genre];
+    list.unshift({ name: `${g.emoji} Canzone ${list.length + 1}`, genre: state.genre, piano: state.piano, arp: state.arp, melody: state.melody,
+      seed: state.seed, prog: state.prog, bpm: state.bpm, timeline: state.timeline.map(c => ({ root: c.root, quality: c.quality })) });
+    store.set("songs", list.slice(0, 30)); renderSaved();
+  });
+
+  // ---- Circle of fifths ----
+  function renderCircle() {
+    const svg = $("circleSvg"), k = result.key, sugg = new Set(result.chords.map(s => s.chord.root + (CP.Q[s.chord.quality].iv.includes(3) ? "m" : "M")));
+    const ns = "http://www.w3.org/2000/svg"; svg.textContent = "";
+    const add = (tag, attrs, text) => { const e = document.createElementNS(ns, tag); for (const a in attrs) e.setAttribute(a, attrs[a]); if (text) e.textContent = text; svg.appendChild(e); return e; };
+    for (let i = 0; i < 12; i++) {
+      const maj = (i * 7) % 12, min = (maj + 9) % 12, ang = (i / 12) * Math.PI * 2 - Math.PI / 2;
+      const ring = (r, pc, minor) => {
+        const x = 200 + Math.cos(ang) * r, y = 200 + Math.sin(ang) * r;
+        const isKey = pc === k.tonic && minor === k.minor, isSug = sugg.has(pc + (minor ? "m" : "M"));
+        const c = add("circle", { cx: x, cy: y, r: minor ? 22 : 27, fill: isKey ? "#3dffb0" : isSug ? "rgba(142,108,255,0.55)" : "rgba(255,255,255,0.06)",
+          stroke: isKey ? "#3dffb0" : "rgba(140,190,255,0.3)", "stroke-width": 1.5, style: "cursor:pointer" });
+        const label = noteName(pc, CP.prefersFlats({ tonic: pc, minor })) + (minor ? "m" : "");
+        add("text", { x, y: y + 5, "text-anchor": "middle", "font-size": minor ? 12 : 14, "font-weight": 700, fill: isKey ? "#022018" : "#eaf2ff", "pointer-events": "none" }, label);
+        c.addEventListener("click", () => { state.key = minor ? -(pc + 1) : pc + 1; $("key").value = state.key; store.set("key", state.key); applyKey(); afterChange(); renderCircle(); });
+      };
+      ring(165, maj, false); ring(108, min, true);
+    }
+    add("text", { x: 200, y: 205, "text-anchor": "middle", "font-size": 13, fill: "#9fb2d6" }, "quinte →");
+    const mods = $("mods"); mods.textContent = "";
+    CP.modulations(k).forEach(m => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "btn";
+      b.textContent = `${m.name}: ${noteName(m.key.tonic, CP.prefersFlats(m.key))}${m.key.minor ? " minore" : ""} — ${cName(m.pivot)} → ${cName(m.dominant)} → ${cName(m.target)}`;
+      b.addEventListener("click", () => playSequence([m.pivot, m.dominant, m.target]));
+      mods.appendChild(b);
+    });
+  }
+  // Plays a short chord sequence (e.g. a key change) with the current piano.
+  function playSequence(chords) {
+    audio();
+    chords.forEach((c, i) => setTimeout(() => {
+      const v = CP.styleVoicing([...CP.pcs(c)], c.root, 60, 1);
+      playStrummed(v, 92, 2, 0);
+      setTimeout(() => v.forEach(n => voiceOff(n, 2)), 850);
+      addToTimeline(c);
+    }, i * 900));
+  }
+  $("circleBtn").addEventListener("click", () => { renderCircle(); $("circle").showModal(); });
   $("inspRec").addEventListener("click", () => {
     if (inspRec) return;
     inspRec = { t0: null, total: 64, open: new Map(), notes: [] };

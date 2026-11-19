@@ -91,6 +91,7 @@ struct ProOptionsView: View {
                 Section(footer: Text("Funzioni prese dai migliori plug-in simili (Scaler, Captain Chords, InstaChord/Cthulhu).")) {
                     Toggle("🖐 Accordi con un dito", isOn: toggle(.oneFinger))
                     Toggle("🔒 Blocca scala", isOn: toggle(.scaleLock))
+                    Toggle("🥁 Batteria del genere (Genre Player)", isOn: toggle(.drums))
                 }
                 Section("Suono") {
                     VStack(alignment: .leading) {

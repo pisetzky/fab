@@ -116,6 +116,7 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
             p("humanize", "Humanize (%)", .humanize, 0, 100, .percent),
             p("swing", "Swing (%)", .swing, 0, 60, .percent),
             p("transpose", "Trasponi", .transpose, -12, 12, .relativeSemiTones),
+            p("drums", "Batteria", .drums, 0, 1, .boolean),
             p("voicing", "Voicing", .voicing, 0, AUValue(SuggestionEngine.voicingStyles.count - 1), .indexed, SuggestionEngine.voicingStyles)
         ]
         params[Int(ParamAddress.volume.rawValue)].value = 0.8
@@ -166,6 +167,7 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         case .swing: return AUValue(kernel.swing * 100)
         case .transpose: return AUValue(kernel.transpose)
         case .voicing: return AUValue(kernel.voicingStyle)
+        case .drums: return kernel.drumsEnabled ? 1 : 0
         case .none: return 0
         }
     }
@@ -217,6 +219,7 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         case .swing: kernel.swing = Double(max(0, min(60, value))) / 100
         case .transpose: kernel.transpose = Int(value.rounded())
         case .voicing: kernel.voicingStyle = Int(value.rounded())
+        case .drums: kernel.drumsEnabled = value > 0.5
         case .none: break
         }
         if rebuild { schedulePatternRebuild() } else { notifyStateChange() }
@@ -236,7 +239,16 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         }
     }
 
+    private func writeDrums() {
+        let d = genre.drums
+        for (k, lane) in [d.kick, d.snare, d.hat].enumerated() {
+            let chars = Array(lane)
+            for s in 0..<16 { kernel.drumLanes[k * 16 + s] = s < chars.count && chars[s] == "x" ? 1 : 0 }
+        }
+    }
+
     private func rebuildPattern() {
+        writeDrums()
         let p = GenrePatternBuilder.build(genre: genre, key: playerKey, progressionIndex: progressionIndex,
                                           complexity: complexity, arpeggio: arpeggio, melody: melody, seed: song)
         currentPattern = p

@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <climits>
+#include <cstring>
 
 namespace {
 juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
@@ -37,6 +38,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
     l.add(std::make_unique<AudioParameterInt>(ParameterID { "swing", 1 }, "Swing (%)", 0, 60, 0));
     l.add(std::make_unique<AudioParameterInt>(ParameterID { "transpose", 1 }, "Trasponi", -12, 12, 0));
     l.add(std::make_unique<AudioParameterChoice>(ParameterID { "voicing", 1 }, "Voicing", voicings, 0));
+    l.add(std::make_unique<AudioParameterBool>(ParameterID { "drums", 1 }, "Batteria", false));
     return l;
 }
 }
@@ -389,6 +391,20 @@ void ChordPilotProcessor::releasePattern(int offset, juce::MidiBuffer& out) {
 
 void ChordPilotProcessor::fireStep(int step, const cp::Pattern& p, int offset, juce::MidiBuffer& out) {
     if (step == 0) cursor = 0;
+    // Genre drums (synth + MIDI channel 10: 36 kick, 38 snare, 42 hi-hat).
+    if (params.getRawParameterValue("drums")->load() > 0.5f) {
+        auto groove = cp::drumGroove(cp::genres()[(size_t) juce::jlimit(0, (int) cp::genres().size() - 1, genreIndex())].id);
+        const char* lanes[3] = { groove.kick, groove.snare, groove.hat };
+        const int notes[3] = { 36, 38, 42 };
+        const bool synthOn = params.getRawParameterValue("synth")->load() > 0.5f;
+        for (int k = 0; k < 3; ++k) {
+            if (std::strlen(lanes[k]) < 16 || lanes[k][step % 16] != 'x') continue;
+            int vel = k == 2 ? (step % 4 == 0 ? 70 : 50) : (step % 16 == 0 ? 110 : 96);
+            if (synthOn) synth.drum(k, vel);
+            out.addEvent(juce::MidiMessage::noteOn(10, notes[k], (juce::uint8) vel), offset);
+            out.addEvent(juce::MidiMessage::noteOff(10, notes[k]), std::min(offset + 1, std::max(offset, (int) (sampleRate * 0.05) + offset)));
+        }
+    }
     patternChordIndex = step / std::max(1, p.stepsPerChord);
     while (cursor < p.events.size() && p.events[cursor].step < step) ++cursor;
     const int swing = (int) params.getRawParameterValue("swing")->load();

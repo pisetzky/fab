@@ -124,6 +124,8 @@ private:
     juce::ToggleButton minorToggle { "Minore" }, synthToggle { "Piano interno" }, syncToggle { "Sync DAW" }, italianToggle { "Do Re Mi" };
     juce::TextButton playButton { "Genre Player" }, newSongButton { "Nuova canzone" }, geniusButton { "Modalita Genio" }, octDown { "<" }, octUp { ">" };
     juce::TextButton proButton { "Pro" }, inspireButton { "Ispirazione" };
+    juce::ToggleButton drumsToggle { "Batteria" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> drumsA;
     MidiDragButton midiButton { proc };
     juce::Slider bpmSlider;
     std::array<SuggestionCard, 6> cards;

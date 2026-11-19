@@ -387,7 +387,7 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &genreBox, &pianoBox, &keyBox, &complexityBox, &progressionBox,
             &minorToggle, &synthToggle, &syncToggle, &italianToggle, &playButton, &bpmSlider, &octDown, &octUp, &keyboard,
-            &arpBox, &melodyBox, &newSongButton, &geniusButton, &proButton, &midiButton, &inspireButton })
+            &arpBox, &melodyBox, &newSongButton, &geniusButton, &proButton, &midiButton, &inspireButton, &drumsToggle })
         addAndMakeVisible(c);
     for (auto& c : cards) {
         addAndMakeVisible(c);
@@ -414,6 +414,7 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
     syncA = std::make_unique<BA>(s, "sync", syncToggle);
     playA = std::make_unique<BA>(s, "play", playButton);
     geniusA = std::make_unique<BA>(s, "genius", geniusButton);
+    drumsA = std::make_unique<BA>(s, "drums", drumsToggle);
     bpmA = std::make_unique<SA>(s, "bpm", bpmSlider);
     italianToggle.onClick = [this] { keyboard.italian = italianToggle.getToggleState(); recompute(); };
     octDown.onClick = [this] { keyboard.lowest = std::max(24, keyboard.lowest - 12); recompute(); };
@@ -577,6 +578,7 @@ void ChordPilotEditor::resized() {
     synthToggle.setBounds(second.removeFromLeft(120));
     syncToggle.setBounds(second.removeFromLeft(100));
     italianToggle.setBounds(second.removeFromLeft(100));
+    drumsToggle.setBounds(second.removeFromLeft(100));
     r.removeFromTop(8);
     auto third = r.removeFromTop(30);
     arpBox.setBounds(third.removeFromLeft(200)); third.removeFromLeft(8);
