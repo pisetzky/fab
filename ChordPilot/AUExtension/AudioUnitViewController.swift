@@ -16,14 +16,16 @@ public final class AudioUnitViewController: AUViewController, AUAudioUnitFactory
         if let au = audioUnit { connectUI(to: au) }
     }
 
-    // Called by the host on a background thread.
-    public func createAudioUnit(with componentDescription: AudioComponentDescription) throws -> AUAudioUnit {
+    // Called by the host, usually on a background thread.
+    nonisolated public func createAudioUnit(with componentDescription: AudioComponentDescription) throws -> AUAudioUnit {
         let au = try ChordPilotAudioUnit(componentDescription: componentDescription, options: [])
-        audioUnit = au
-        DispatchQueue.main.async { [weak self] in
-            if self?.isViewLoaded == true { self?.connectUI(to: au) }
-        }
+        Task { @MainActor [weak self] in self?.install(au) }
         return au
+    }
+
+    private func install(_ au: ChordPilotAudioUnit) {
+        audioUnit = au
+        if isViewLoaded { connectUI(to: au) }
     }
 
     private func connectUI(to au: ChordPilotAudioUnit) {

@@ -55,8 +55,7 @@ public final class ChordPilotAudioUnit: AUAudioUnit {
         _outputBusses = AUAudioUnitBusArray(audioUnit: self, busType: .output, busses: [outputBus])
         kernel.isMIDIEffect = componentDescription.componentType == kAudioUnitType_MIDIProcessor
         maximumFramesToRender = 4096
-        setupParameters()
-        rebuildPattern()
+        setupParameters()   // also schedules the first genre-player pattern
     }
 
     // MARK: - Busses & capabilities

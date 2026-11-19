@@ -180,7 +180,7 @@ final class PianoKeyboardUIView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches {
-            if let (n, v) = note(at: t.location(in: self)) {
+            if case let (n, v)? = note(at: t.location(in: self)) {
                 touchNotes[t] = n
                 onNoteDown?(n, v)
             }
@@ -194,7 +194,7 @@ final class PianoKeyboardUIView: UIView {
             if hit?.0 != current {
                 if let c = current, !touchNotes.contains(where: { $0.key != t && $0.value == c }) { onNoteUp?(c) }
                 touchNotes[t] = hit?.0
-                if let (n, v) = hit { onNoteDown?(n, v) }
+                if case let (n, v)? = hit { onNoteDown?(n, v) }
             }
         }
     }

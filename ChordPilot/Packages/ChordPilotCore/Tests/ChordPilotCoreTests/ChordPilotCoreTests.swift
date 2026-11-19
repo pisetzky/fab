@@ -105,7 +105,7 @@ final class ChordPilotCoreTests: XCTestCase {
         let f = Chord(root: 5, quality: .major).voicing(near: 60, previous: c, withBass: false)
         XCTAssertEqual(c.count, 3)
         XCTAssertEqual(f.count, 3)
-        // C (60 64 67) → F should be the 2nd inversion (60 65 69): total movement ≤ 3 semitones.
+        // C → F with smooth voice-leading: total movement ≤ 3 semitones.
         let moved = zip(c, f).map { abs($0 - $1) }.reduce(0, +)
         XCTAssertLessThanOrEqual(moved, 3)
     }

@@ -152,7 +152,8 @@ public final class ChordPilotController: ObservableObject {
         for n in notes { k.sendFromUI(status: 0x90, data1: UInt8(n), data2: 96) }
         engine.didPlay(voicing: s.voicing, chord: s.chord)
         lastCommitted = s.chord
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 900_000_000)
             for n in notes { self?.audioUnit?.kernel.sendFromUI(status: 0x80, data1: UInt8(n), data2: 0) }
             self?.recompute()
         }
