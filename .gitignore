@@ -1,0 +1,7 @@
+.DS_Store
+ChordPilot/build/
+ChordPilot/ChordPilot.xcodeproj/
+ChordPilot/Packages/ChordPilotCore/.build/
+dist/
+Payload/
+xcuserdata/

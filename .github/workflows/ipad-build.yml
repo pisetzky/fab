@@ -1,0 +1,66 @@
+name: ChordPilot iPad – build, test & installer
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Unit tests (music theory engine)
+        working-directory: ChordPilot/Packages/ChordPilotCore
+        run: swift test
+
+      - name: Generate Xcode project
+        working-directory: ChordPilot
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build iPad app + AUv3 plug-in (unsigned)
+        working-directory: ChordPilot
+        run: |
+          set -o pipefail
+          xcodebuild -project ChordPilot.xcodeproj -scheme ChordPilot -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -n 80
+
+      - name: Assemble installer folder
+        run: |
+          set -e
+          APP=ChordPilot/build/Build/Products/Release-iphoneos/ChordPilot.app
+          test -d "$APP/PlugIns/ChordPilotAU.appex"
+          DIST=dist/ChordPilot-Installer
+          mkdir -p "$DIST"
+          cp -R Installer/. "$DIST/"
+          mkdir -p Payload && cp -R "$APP" Payload/
+          zip -qry "$DIST/iPad/ChordPilot-iPad-unsigned.ipa" Payload
+          git archive --format=zip --prefix=ChordPilot-source/ -o "$DIST/iPad/ChordPilot-source.zip" HEAD ChordPilot Installer
+          chmod +x "$DIST"/*.command || true
+          (cd dist && zip -qry ChordPilot-Installer.zip ChordPilot-Installer)
+          ls -la "$DIST" "$DIST/iPad"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChordPilot-Installer
+          path: dist/ChordPilot-Installer.zip
+
+      - name: Publish release (on tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ChordPilot-Installer.zip

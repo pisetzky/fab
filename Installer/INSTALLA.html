@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChordPilot – Installa</title>
+<style>
+  :root { --bg:#0b0d17; --card:#161a2e; --text:#f2f3f8; --muted:#a3a8c3; --accent:#ff4fd8; --ok:#2dffa8; --soon:#ffc233; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: radial-gradient(circle at 15% 0%, rgba(255,79,216,.25), transparent 45%), var(--bg);
+         color: var(--text); min-height: 100vh; padding: 40px 16px; }
+  main { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 40px; margin: 0 0 6px; letter-spacing: -.5px; }
+  p.lead { color: var(--muted); margin: 0 0 32px; font-size: 17px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid rgba(255,255,255,.08); border-radius: 18px; padding: 22px; display:flex; flex-direction:column; gap:10px; }
+  .card h2 { margin: 0; font-size: 21px; }
+  .badge { align-self:flex-start; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+  .ok { background: rgba(45,255,168,.15); color: var(--ok); }
+  .soon { background: rgba(255,194,51,.15); color: var(--soon); }
+  .card p, .card li { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
+  .card ul { padding-left: 18px; margin: 0; }
+  a.btn { display:inline-block; margin-top:auto; text-align:center; padding: 11px 14px; border-radius: 12px;
+          background: var(--accent); color: #12001a; font-weight: 700; text-decoration: none; }
+  a.btn.secondary { background: rgba(255,255,255,.1); color: var(--text); }
+  footer { margin-top: 32px; color: var(--muted); font-size: 13px; }
+  code { background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎹 ChordPilot</h1>
+  <p class="lead">Scegli cosa installare. Suona una nota o un accordo e i tasti successivi si illuminano, nello stile del genere che scegli.</p>
+  <div class="grid">
+    <section class="card">
+      <span class="badge ok">Disponibile</span>
+      <h2>iPad – App + plug-in AUv3</h2>
+      <ul>
+        <li>GarageBand, Logic Pro per iPad, Cubasis, AUM, Loopy Pro, BeatMaker…</li>
+        <li>MIDI e audio si collegano da soli</li>
+        <li>iPadOS 16 o successivo</li>
+      </ul>
+      <a class="btn" href="iPad/COME_INSTALLARE.md">Istruzioni iPad</a>
+      <a class="btn secondary" href="iPad/">Apri la cartella (.ipa e sorgente)</a>
+    </section>
+    <section class="card">
+      <span class="badge ok">Disponibile</span>
+      <h2>Mac Apple Silicon</h2>
+      <p>La stessa app/AUv3 gira su Mac M1–M4: Logic Pro, GarageBand, MainStage.</p>
+      <p>Doppio clic su <code>Installa-Mac.command</code> → opzione 2.</p>
+      <a class="btn secondary" href="Mac/LEGGIMI.md">Istruzioni Mac</a>
+    </section>
+    <section class="card">
+      <span class="badge soon">In arrivo</span>
+      <h2>Windows e Mac Intel – VST3 / AU</h2>
+      <p>Ableton Live, FL Studio, Cubase, Reaper, Studio One, Bitwig… È la prossima fase del progetto.</p>
+      <a class="btn secondary" href="Windows/LEGGIMI.md">Dettagli</a>
+    </section>
+  </div>
+  <footer>Contenuto della cartella: <code>INSTALLA.html</code> · <code>Installa-Mac.command</code> · <code>Installa-Windows.bat</code> · <code>iPad/</code> · <code>Mac/</code> · <code>Windows/</code></footer>
+</main>
+</body>
+</html>
