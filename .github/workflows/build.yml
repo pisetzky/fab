@@ -65,7 +65,7 @@ jobs:
       - name: Build VST3 + Standalone + ChordPilot MIDI
         working-directory: Desktop
         run: |
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          cmake -S . -B build -A x64
           cmake --build build --config Release --target ChordPilot_VST3 ChordPilot_Standalone ChordPilotMIDI_VST3 ChordPilotEngineTests
           .\build\Release\ChordPilotEngineTests.exe
       - name: Installer (Inno Setup)
