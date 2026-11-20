@@ -1,0 +1,121 @@
+﻿AURORA SIGNAL 1.0.0
+Segnali COMPRA / VENDI per le criptovalute, con obiettivo di vendita e data stimata
+==================================================================================
+
+Grazie per aver scelto Aurora Signal!
+
+Ogni giorno l'app ti dice, per ognuna delle prime 100 o 250 criptovalute, se è il
+momento di COMPRARE o VENDERE, a che prezzo vendere (con la percentuale di guadagno)
+e entro quale data, tenendo conto di mercati, materie prime e notizie mondiali.
+
+
+CONTENUTO DELLA CARTELLA
+------------------------
+  Mac/        Aurora-Signal-1.0.0.dmg           installazione automatica per Mac
+  Windows/    Aurora-Signal-Setup-1.0.0.exe     installazione automatica per Windows
+              Aurora-Signal-Windows-Portatile.zip  versione senza installazione
+  Linux/      aurora-signal-linux.tar.gz           per Linux
+  Web/        Aurora Signal.html                   si apre in qualsiasi browser, anche su
+                                                   telefono e tablet
+  LEGGIMI.txt      queste istruzioni
+  LICENZA.txt      condizioni d'uso
+
+
+INSTALLAZIONE SU MAC
+--------------------
+1. Apri il file  Mac/Aurora-Signal-1.0.0.dmg  con un doppio clic.
+2. Nella finestra che si apre fai doppio clic su "Aurora Signal".
+3. L'app si copia da sola nella cartella Applicazioni e si apre.
+   Fatto! Da ora la trovi in Applicazioni e nel Launchpad.
+
+Se il Mac dice che l'app "non può essere aperta" o "proviene da uno sviluppatore
+non identificato" (succede la prima volta con le app scaricate da internet):
+  - macOS 14 Sonoma e precedenti: clic con il tasto destro (o ctrl+clic) su
+    "Aurora Signal", scegli "Apri", poi di nuovo "Apri".
+  - macOS 15 Sequoia e successivi: fai doppio clic, chiudi l'avviso, poi apri
+    Impostazioni di Sistema > Privacy e sicurezza, scorri in basso e premi
+    "Apri comunque" accanto ad Aurora Signal.
+Va fatto una sola volta.
+
+In alternativa puoi trascinare l'icona "Aurora Signal" sulla cartella
+"Applicazioni" presente nella stessa finestra.
+
+Funziona su Mac Intel e Apple Silicon (M1, M2, M3, M4…), da macOS 10.11 El Capitan
+in poi.
+
+
+INSTALLAZIONE SU WINDOWS
+------------------------
+1. Fai doppio clic su  Windows/Aurora-Signal-Setup-1.0.0.exe
+2. Premi Avanti, accetta la licenza e premi Installa. Non servono permessi di
+   amministratore.
+3. Trovi l'icona "Aurora Signal" sul desktop e nel menu Start.
+
+Se compare "Windows ha protetto il PC" (SmartScreen): premi "Ulteriori
+informazioni" e poi "Esegui comunque". Va fatto una sola volta.
+
+Per disinstallare: menu Start > Aurora Signal > Disinstalla Aurora Signal, oppure
+Impostazioni > App.
+
+Versione portatile (senza installazione): estrai lo zip in una cartella qualsiasi,
+anche su una chiavetta USB, e fai doppio clic su "Avvia Aurora Signal".
+
+Funziona su Windows 7, 8, 8.1, 10 e 11 (32 e 64 bit).
+
+
+LINUX
+-----
+Estrai  aurora-signal-linux.tar.gz  e lancia  ./installa.sh  (aggiunge l'app al
+menu), oppure apri direttamente  aurora-signal.html  nel browser.
+
+
+TELEFONO, TABLET O QUALSIASI ALTRO COMPUTER
+-------------------------------------------
+Apri  Web/Aurora Signal.html  con il browser. Su iPhone/iPad puoi usare
+"Condividi > Aggiungi alla schermata Home".
+
+
+REQUISITI
+---------
+- Connessione a internet (l'app legge i dati in tempo reale).
+- Un browser aggiornato: Chrome, Edge, Firefox, Safari o Brave. Su Mac e Windows
+  l'app si apre in una finestra dedicata se è installato Chrome, Edge o Brave,
+  altrimenti nel browser predefinito.
+  Versioni minime: Chrome/Edge 58+, Firefox 57+, Safari 11+.
+
+
+COME SI USA
+-----------
+- In alto vedi il RISCHIO MONDO di oggi (0 = calmo, 100 = rischio estremo) e tutti
+  i fattori controllati: mercato crypto, economia, borse e materie prime,
+  geopolitica, società e logistica, natura e salute.
+- Ogni scheda moneta mostra COMPRA o VENDI, l'affidabilità, il prezzo a cui
+  vendere (o ricomprare), la percentuale prevista e la data stimata.
+- Tocca una moneta per vedere il grafico, lo stop di sicurezza e il perché del
+  segnale.
+- Con la stella ★ segni le preferite; premi "Avvisi" per ricevere una notifica
+  quando il loro segnale cambia.
+- L'app si aggiorna da sola: prezzi ogni 5 minuti, notizie ogni 30 minuti.
+
+Analisi AI (facoltativa): apri il riquadro "Analisi AI con ricerca web" e inserisci
+una tua chiave API Anthropic (si crea su console.anthropic.com). L'AI cercherà da
+sola sul web le notizie del giorno ogni 3 ore. Il costo, di pochi centesimi a
+ricerca, è addebitato sul tuo account Anthropic. La chiave resta solo sul tuo
+computer.
+
+
+PRIVACY
+-------
+L'app non ha account e non invia i tuoi dati a noi. Preferiti, impostazioni e
+chiave AI restano salvati solo nel browser del tuo computer. L'app scarica i dati
+pubblici da: CoinGecko, GDELT, Stooq, Open-Meteo, alternative.me, Binance e, solo
+se inserisci la chiave, Anthropic.
+
+
+AVVERTENZA IMPORTANTE
+---------------------
+Aurora Signal è uno strumento informativo basato su calcoli statistici e notizie.
+NON è consulenza finanziaria e non garantisce guadagni. Le criptovalute sono molto
+rischiose e possono perdere gran parte del loro valore in poco tempo. Gli obiettivi
+di prezzo e le date sono stime, non promesse. Ogni decisione di investimento è
+solo tua. Non investire denaro che non puoi permetterti di perdere.

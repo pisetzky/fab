@@ -1,0 +1,47 @@
+CONTRATTO DI LICENZA D'USO - AURORA SIGNAL
+==========================================
+
+Installando o usando Aurora Signal ("il Software") accetti le condizioni seguenti.
+
+1. LICENZA
+Ti viene concessa una licenza personale, non esclusiva e non trasferibile per
+installare e usare il Software sui dispositivi di tua proprietà.
+
+2. LIMITI
+Non puoi rivendere, noleggiare, distribuire o pubblicare il Software o sue copie,
+né modificarlo per distribuirlo a terzi, senza autorizzazione scritta del titolare.
+
+3. NESSUNA CONSULENZA FINANZIARIA
+Il Software fornisce informazioni generali calcolate in modo automatico da dati
+pubblici e statistiche. Non costituisce consulenza in materia di investimenti,
+raccomandazione personalizzata, sollecitazione all'acquisto o alla vendita di
+strumenti finanziari o cripto-attività. I segnali, gli obiettivi di prezzo e le
+date indicate sono stime e possono rivelarsi errati.
+
+4. RISCHIO
+Le cripto-attività sono altamente volatili e rischiose. Puoi perdere tutto il
+capitale investito. Ogni decisione di investimento è presa da te, sotto la tua
+esclusiva responsabilità.
+
+5. SERVIZI DI TERZI
+Il Software usa dati di servizi esterni (es. CoinGecko, GDELT, Stooq, Open-Meteo,
+alternative.me, Binance, Anthropic). Il titolare non controlla tali servizi e non
+garantisce che siano sempre disponibili, corretti o aggiornati. L'uso facoltativo
+dell'analisi AI richiede una chiave API personale; i relativi costi sono a tuo
+carico.
+
+6. ESCLUSIONE DI GARANZIA
+Il Software è fornito "così com'è", senza garanzie di alcun tipo, esplicite o
+implicite, incluse quelle di idoneità a uno scopo particolare e di assenza di
+errori.
+
+7. LIMITAZIONE DI RESPONSABILITÀ
+Nei limiti massimi consentiti dalla legge, il titolare non è responsabile di
+perdite economiche, mancati guadagni o danni diretti o indiretti derivanti dall'uso
+o dall'impossibilità di usare il Software o dalle informazioni che fornisce.
+
+8. LEGGE APPLICABILE
+Il presente contratto è regolato dalla legge italiana. Restano salvi i diritti
+inderogabili riconosciuti al consumatore dalla normativa vigente.
+
+© 2026 Aurora Signal. Tutti i diritti riservati.

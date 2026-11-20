@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#050b1a">
+<title>Aurora Signal</title>
+<meta name="version" content="1.0.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --night:#050b1a; --night2:#0a1530; --glass:rgba(16,30,60,.55); --line:rgba(140,200,255,.14);
+  --ice:#e8f6ff; --mute:#8fa6c8;
+  --a-green:#3dffa8; --a-mint:#00f5c4; --a-teal:#00d4ff; --a-blue:#4f7cff; --a-violet:#9b6bff; --a-pink:#ff5fd2;
+  --buy:#3dffa8; --sell:#ff5f8f; --warn:#ffd36b;
+  --r:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--night);color:var(--ice);font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{min-height:100vh;overflow-x:hidden}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+
+/* ---------- Aurora sky ---------- */
+.sky{position:fixed;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden;background:radial-gradient(120% 80% at 50% 120%,#0b1f3d 0%,var(--night) 60%)}
+.band{position:absolute;width:140vw;height:55vh;left:-20vw;filter:blur(60px);opacity:.55;mix-blend-mode:screen;border-radius:50%}
+.b1{top:-12vh;background:linear-gradient(90deg,transparent,var(--a-green),var(--a-mint),transparent);animation:drift1 18s ease-in-out infinite alternate}
+.b2{top:2vh;background:linear-gradient(90deg,transparent,var(--a-teal),var(--a-violet),transparent);opacity:.4;animation:drift2 24s ease-in-out infinite alternate}
+.b3{top:-6vh;background:linear-gradient(90deg,transparent,var(--a-pink),var(--a-violet),transparent);opacity:.25;animation:drift3 30s ease-in-out infinite alternate}
+@keyframes drift1{from{transform:translateX(-8vw) skewY(-6deg) scaleY(.8)}to{transform:translateX(8vw) skewY(4deg) scaleY(1.1)}}
+@keyframes drift2{from{transform:translateX(10vw) skewY(5deg)}to{transform:translateX(-10vw) skewY(-5deg) scaleY(1.2)}}
+@keyframes drift3{from{transform:translateX(-4vw) rotate(-3deg)}to{transform:translateX(6vw) rotate(3deg)}}
+.stars{position:absolute;top:0;right:0;bottom:0;left:0;background-image:radial-gradient(1px 1px at 20% 30%,#fff8,transparent),radial-gradient(1px 1px at 70% 20%,#fff6,transparent),radial-gradient(1px 1px at 40% 70%,#fff5,transparent),radial-gradient(1px 1px at 85% 60%,#fff7,transparent),radial-gradient(1px 1px at 10% 85%,#fff5,transparent),radial-gradient(1px 1px at 55% 45%,#fff4,transparent);background-size:400px 400px}
+@media (prefers-reduced-motion:reduce){.band{animation:none}}
+
+/* ---------- Layout ---------- */
+.wrap{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:16px 16px 80px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 0 18px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:42px;height:42px;border-radius:12px;background:conic-gradient(from 200deg,var(--a-green),var(--a-teal),var(--a-violet),var(--a-pink),var(--a-green));box-shadow:0 0 30px #3dffa855}
+h1{margin:0;font-size:1.5rem;letter-spacing:.5px;background:linear-gradient(90deg,var(--a-green),var(--a-teal),var(--a-violet),var(--a-pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mute);font-size:.82rem}
+.hbtns{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--glass);color:var(--ice);padding:9px 14px;border-radius:12px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:.2s}
+button:hover{border-color:var(--a-teal);box-shadow:0 0 18px #00d4ff33}
+button.primary{background:linear-gradient(90deg,#3dffa833,#00d4ff33,#9b6bff33);border-color:#3dffa866}
+button:disabled{opacity:.5;cursor:wait}
+.card{background:var(--glass);border:1px solid var(--line);border-radius:var(--r);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.grid-top{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:16px;margin-bottom:16px}
+@media (max-width:860px){.grid-top{grid-template-columns:1fr}}
+
+/* Gauge */
+.gauge{padding:18px;display:flex;flex-direction:column;align-items:center;text-align:center}
+@media (min-width:861px){.gauge{position:sticky;top:16px;align-self:start}}
+.gauge h2,.sec h2{margin:0 0 6px;font-size:.8rem;text-transform:uppercase;letter-spacing:2px;color:var(--mute);font-weight:500}
+.gauge svg{width:100%;max-width:260px}
+.gval{font-size:2.6rem;font-weight:700;margin-top:-58px}
+.glabel{font-weight:600;margin-top:2px}
+.gmeta{color:var(--mute);font-size:.8rem;margin-top:10px;line-height:1.5}
+.pills{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:10px}
+.pill{font-size:.72rem;padding:3px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+.pill.ok{color:var(--a-green);border-color:#3dffa855}.pill.ko{color:var(--sell);border-color:#ff5f8f55}.pill.wait{color:var(--warn);border-color:#ffd36b55}
+
+/* Factors */
+.sec{padding:16px}
+.factors{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:8px}
+.ghead{font-size:.78rem;font-weight:600;margin:14px 0 0;color:var(--a-teal)}
+.ghead:first-child{margin-top:4px}
+.f{padding:10px 12px;border-radius:12px;background:rgba(5,11,26,.45);border:1px solid var(--line);position:relative;overflow:hidden}
+.f .n{font-size:.78rem;color:var(--mute);display:flex;justify-content:space-between;gap:4px}
+.f .v{font-size:1.25rem;font-weight:700;margin-top:2px}
+.f .d{font-size:.7rem;color:var(--mute);margin-top:2px;min-height:1em}
+.f .bar{position:absolute;left:0;bottom:0;height:3px;border-radius:3px;transition:width .6s}
+.f.loading .v{opacity:.35}
+
+/* Ticker */
+.ticker{overflow:hidden;white-space:nowrap;padding:10px 0;margin-bottom:16px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
+.ticker .run{display:inline-block;animation:tick 120s linear infinite;padding-left:100%}
+.ticker a{color:var(--ice);text-decoration:none;margin-right:42px;font-size:.85rem}
+.ticker a b{color:var(--a-teal);margin-right:6px;font-weight:600}
+@keyframes tick{to{transform:translateX(-100%)}}
+@media (prefers-reduced-motion:reduce){.ticker .run{animation:none;padding-left:0}}
+
+/* Toolbar */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 12px}
+.tabs{display:flex;gap:4px;padding:4px;border-radius:12px;background:rgba(5,11,26,.5);border:1px solid var(--line)}
+.tabs button{border:0;background:transparent;padding:7px 12px}
+.tabs button.on{background:linear-gradient(90deg,#3dffa82a,#00d4ff2a);box-shadow:inset 0 0 0 1px #3dffa855}
+input[type=search],input[type=password],input[type=text],select{font:inherit;color:var(--ice);background:rgba(5,11,26,.6);border:1px solid var(--line);border-radius:12px;padding:9px 12px;outline:none}
+input:focus,select:focus{border-color:var(--a-teal)}
+.toolbar input[type=search]{flex:1;min-width:160px}
+
+/* Coins */
+.coins{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.coin{padding:14px;cursor:pointer;transition:transform .15s,border-color .2s;position:relative}
+.coin:hover{transform:translateY(-2px);border-color:#00d4ff66}
+.ch{display:flex;align-items:center;gap:10px}
+.ch img{width:30px;height:30px;border-radius:50%}
+.ch .nm{flex:1;min-width:0}
+.ch .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch .nm span{color:var(--mute);font-size:.75rem;text-transform:uppercase}
+.star{background:none;border:0;padding:4px;font-size:1.1rem;color:var(--mute)}
+.star.on{color:var(--warn)}
+.sig{display:flex;align-items:center;justify-content:space-between;margin:12px 0 8px}
+.badge{font-weight:700;letter-spacing:2px;padding:7px 14px;border-radius:10px;font-size:.95rem}
+.badge.buy{color:#04140c;background:linear-gradient(90deg,var(--a-green),var(--a-mint));box-shadow:0 0 22px #3dffa855}
+.badge.sell{color:#1a0410;background:linear-gradient(90deg,var(--sell),var(--a-pink));box-shadow:0 0 22px #ff5f8f55}
+.badge.stable{color:var(--mute);background:rgba(255,255,255,.06)}
+.conf{text-align:right;font-size:.75rem;color:var(--mute)}
+.conf b{display:block;font-size:1.05rem;color:var(--ice)}
+.price{display:flex;justify-content:space-between;align-items:baseline}
+.price .p{font-size:1.15rem;font-weight:600}
+.chg{font-size:.8rem}
+.up{color:var(--buy)}.dn{color:var(--sell)}
+.spark{width:100%;height:44px;display:block;margin:8px 0}
+.plan{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:.72rem;color:var(--mute)}
+.plan div{background:rgba(5,11,26,.45);border-radius:8px;padding:6px 8px}
+.plan b{display:block;color:var(--ice);font-size:.85rem;margin-top:2px}
+.weak{position:absolute;top:10px;right:46px;font-size:.65rem;color:var(--warn)}
+
+/* Modal */
+.modal{position:fixed;top:0;right:0;bottom:0;left:0;z-index:20;background:rgba(2,6,16,.75);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:none;align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto}
+.modal.open{display:flex}
+.mbox{width:100%;max-width:860px;padding:20px}
+.mhead{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.mhead img{width:40px;height:40px;border-radius:50%}
+.mhead .x{margin-left:auto}
+canvas.big{width:100%;height:280px;display:block;border-radius:12px;background:rgba(5,11,26,.5)}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin:14px 0}
+.kv>div{background:rgba(5,11,26,.5);border:1px solid var(--line);border-radius:10px;padding:10px}
+.kv>div>span{font-size:.72rem;color:var(--mute)}
+.kv>div>b{display:block;font-size:1.05rem;margin-top:2px}
+.why{line-height:1.6;font-size:.9rem;color:#cfe3ff}
+.why li{margin-bottom:4px}
+.meter{height:8px;border-radius:8px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:6px}
+.meter i{display:block;height:100%}
+
+/* AI */
+.ai{padding:16px;margin-bottom:16px}
+.ai-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ai-row input{flex:1;min-width:200px}
+.ai-out{margin-top:12px;font-size:.88rem;line-height:1.6;color:#cfe3ff;white-space:pre-wrap}
+details summary{cursor:pointer;color:var(--mute);font-size:.85rem}
+.note{font-size:.75rem;color:var(--mute);line-height:1.5}
+.disclaimer{margin-top:28px;padding:14px 16px;font-size:.78rem;color:var(--mute);line-height:1.6;border-left:3px solid var(--warn)}
+.status{font-size:.78rem;color:var(--mute)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--a-green);box-shadow:0 0 10px var(--a-green);margin-right:6px;animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.35}}
+.empty{color:var(--mute);padding:30px;text-align:center}
+</style>
+</head>
+<body>
+<div class="sky"><div class="stars"></div><div class="band b1"></div><div class="band b2"></div><div class="band b3"></div></div>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1>Aurora Signal</h1>
+        <div class="sub"><span class="dot" id="liveDot"></span><span id="status">Avvio…</span></div>
+      </div>
+    </div>
+    <div class="hbtns">
+      <button id="btnNotify" title="Avvisi quando cambia il segnale delle monete con la stella">🔔 Avvisi</button>
+      <button id="btnRefresh" class="primary">↻ Aggiorna ora</button>
+    </div>
+  </header>
+
+  <div class="grid-top">
+    <div class="card gauge">
+      <h2>Rischio mondo oggi</h2>
+      <svg viewBox="0 0 200 120" aria-hidden="true">
+        <defs>
+          <linearGradient id="gg" x1="0" x2="1">
+            <stop offset="0" stop-color="#3dffa8"/><stop offset=".35" stop-color="#00d4ff"/>
+            <stop offset=".7" stop-color="#9b6bff"/><stop offset="1" stop-color="#ff5fd2"/>
+          </linearGradient>
+        </defs>
+        <path d="M20 105 A80 80 0 0 1 180 105" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="14" stroke-linecap="round"/>
+        <path id="garc" d="M20 105 A80 80 0 0 1 180 105" fill="none" stroke="url(#gg)" stroke-width="14" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="251.3" style="transition:stroke-dashoffset 1s"/>
+        <circle id="gneedle" cx="20" cy="105" r="7" fill="#e8f6ff" style="transition:all 1s"/>
+      </svg>
+      <div class="gval mono" id="gval">--</div>
+      <div class="glabel" id="glabel">In calcolo</div>
+      <div class="gmeta" id="gmeta">Notizie mondiali, mercati, meteo e sentiment vengono ricontrollati in automatico.</div>
+      <div class="pills" id="sources"></div>
+    </div>
+
+    <div class="card sec">
+      <h2>Cosa sto monitorando</h2>
+      <div id="factors"></div>
+      <p class="note" style="margin:10px 0 0">Ogni riquadro: 0 = calmo, 100 = rischio massimo. Fonti: tono delle notizie mondiali su 32 temi (GDELT), Nasdaq, S&amp;P 500, VIX, dollaro, rendimenti USA e materie prime (Stooq), mercato crypto globale (CoinGecko), leva sui future (Binance), meteo estremo nelle aree chiave (Open‑Meteo), Fear &amp; Greed, ciclo dell'halving, analisi AI facoltativa. I pesi si ribilanciano da soli se una fonte non risponde.</p>
+    </div>
+  </div>
+
+  <div class="card ticker" id="tickerBox"><div class="run" id="ticker"><a>In attesa delle notizie…</a></div></div>
+
+  <div class="card ai">
+    <details id="aiDetails">
+      <summary>🤖 Analisi AI con ricerca web (facoltativa, usa la tua chiave API Anthropic)</summary>
+      <div style="margin-top:12px">
+        <div class="ai-row">
+          <input type="password" id="aiKey" placeholder="Chiave API Anthropic (sk-ant-…)" autocomplete="off">
+          <label class="note"><input type="checkbox" id="aiAuto" checked> in automatico ogni 3 ore</label>
+          <button id="aiRun" class="primary">Analizza ora</button>
+        </div>
+        <p class="note">La chiave resta solo in questo browser e viene inviata solo ad api.anthropic.com. L'AI cerca sul web le notizie di oggi (guerre, petrolio, gas, grano, Nasdaq, scioperi, aerei, armi, medicina, acqua, meteo) e dà un punteggio di rischio per ognuna, che si somma ai dati automatici. Con la chiave inserita la ricerca parte da sola ogni 3 ore (8 al giorno, qualche centesimo ciascuna sul tuo account Anthropic); se apri l'app dopo più di 3 ore, parte subito.</p>
+        <p class="note" id="aiNext" style="color:var(--a-teal)"></p>
+        <div class="ai-out" id="aiOut"></div>
+      </div>
+    </details>
+  </div>
+
+  <div class="toolbar">
+    <div class="tabs" id="tabs">
+      <button data-f="all" class="on">Tutte</button>
+      <button data-f="buy">Compra</button>
+      <button data-f="sell">Vendi</button>
+      <button data-f="star">★ Preferite</button>
+    </div>
+    <input type="search" id="q" placeholder="Cerca moneta…">
+    <select id="sort">
+      <option value="rank">Capitalizzazione</option>
+      <option value="score">Segnale più forte</option>
+      <option value="gain">Guadagno previsto</option>
+      <option value="chg">Variazione 24h</option>
+    </select>
+    <select id="count">
+      <option value="100">Top 100</option>
+      <option value="250">Top 250</option>
+    </select>
+  </div>
+
+  <div class="coins" id="coins"><div class="empty">Carico le criptovalute…</div></div>
+
+  <div class="card disclaimer">
+    <b>Importante.</b> Aurora Signal calcola i segnali con formule statistiche (RSI, MACD, medie mobili, volatilità) e un indice di rischio costruito da notizie e mercati. Nessun sistema può prevedere il prezzo delle crypto: gli obiettivi di vendita e le date sono stime di probabilità, non promesse. Non è consulenza finanziaria. Non investire soldi che non puoi permetterti di perdere.
+    L'app si aggiorna da sola: prezzi ogni 5 minuti, notizie mondiali ogni 30 minuti, ricerca AI sul web ogni 3 ore. Funziona finché la pagina è aperta; quando la riapri, recupera subito le ricerche saltate.
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="card mbox" id="mbox"></div>
+</div>
+
+<script>
+const CG = "https://api.coingecko.com/api/v3";
+const GDELT = "https://api.gdeltproject.org/api/v2/doc/doc";
+const PRICE_MS = 5 * 6e4, WORLD_MS = 30 * 6e4, AI_MS = 3 * 36e5;
+const STABLES = /* @__PURE__ */ new Set(["usdt", "usdc", "dai", "fdusd", "tusd", "usde", "pyusd", "usdd", "busd", "usds", "usdp", "gusd", "frax", "lusd", "eurc", "usd0", "usdy", "susde", "usdtb", "rlusd", "usd1", "bfusd", "usdf", "eurs", "xaut", "paxg", "susds", "buidl", "usyc"]);
+const GROUPS = {
+  crypto: "\u20BF Mercato crypto",
+  macro: "\u{1F3E6} Economia e finanza",
+  markets: "\u{1F4CA} Borse e materie prime",
+  geo: "\u{1F30D} Geopolitica e sicurezza",
+  society: "\u{1F3ED} Societ\xE0 e logistica",
+  nature: "\u{1F326}\uFE0F Natura e salute"
+};
+const FACTORS = [
+  // --- Mercato crypto (dati diretti) ---
+  { id: "fng", g: "crypto", name: "Fear & Greed", icon: "\u{1F631}", w: 0.05, q: null },
+  { id: "mktcap", g: "crypto", name: "Capitalizz. totale", icon: "\u{1F310}", w: 0.06, q: null },
+  { id: "breadth", g: "crypto", name: "Ampiezza mercato", icon: "\u{1F4F6}", w: 0.06, q: null },
+  { id: "dominance", g: "crypto", name: "Dominanza BTC", icon: "\u{1F451}", w: 0.03, q: null },
+  { id: "leverage", g: "crypto", name: "Leva / funding", icon: "\u2696\uFE0F", w: 0.05, q: null },
+  { id: "cycle", g: "crypto", name: "Ciclo halving", icon: "\u{1F504}", w: 0.03, q: null },
+  { id: "crypto", g: "crypto", name: "Notizie crypto", icon: "\u{1F4F0}", w: 0.05, q: "(bitcoin OR crypto OR cryptocurrency OR ethereum)" },
+  { id: "regul", g: "crypto", name: "Regole e SEC", icon: "\u2696\uFE0F", w: 0.05, q: "crypto (SEC OR regulation OR ban OR lawsuit OR MiCA OR regulators)" },
+  { id: "hack", g: "crypto", name: "Hack ed exploit", icon: "\u{1F3F4}\u200D\u2620\uFE0F", w: 0.04, q: "crypto (hack OR exploit OR stolen OR breach OR hacked)" },
+  { id: "etf", g: "crypto", name: "ETF e istituzioni", icon: "\u{1F3DB}\uFE0F", w: 0.04, q: '("bitcoin ETF" OR "ether ETF" OR "crypto ETF" OR "ETF inflows" OR "ETF outflows")' },
+  // --- Economia e finanza ---
+  { id: "rates", g: "macro", name: "Tassi e banche centr.", icon: "\u{1F3E6}", w: 0.07, q: '("Federal Reserve" OR "interest rates" OR ECB OR "rate hike" OR "rate cut" OR Powell)' },
+  { id: "inflation", g: "macro", name: "Inflazione", icon: "\u{1F4B8}", w: 0.05, q: '(inflation OR CPI OR "consumer prices")' },
+  { id: "dollar", g: "macro", name: "Dollaro USA", icon: "\u{1F4B5}", w: 0.04, q: '("US dollar" OR "dollar index" OR DXY)' },
+  { id: "jobs", g: "macro", name: "Lavoro e recessione", icon: "\u{1F477}", w: 0.04, q: '(unemployment OR layoffs OR recession OR "jobs report" OR payrolls)' },
+  { id: "banks", g: "macro", name: "Banche e debito", icon: "\u{1F9FE}", w: 0.04, q: '("bank collapse" OR "banking crisis" OR default OR "debt ceiling" OR "credit crunch")' },
+  { id: "tech", g: "macro", name: "Tech, chip e AI", icon: "\u{1F4BE}", w: 0.03, q: '(semiconductor OR Nvidia OR chipmaker OR "AI stocks" OR "tech stocks")' },
+  // --- Borse e materie prime ---
+  { id: "nasdaq", g: "markets", name: "Nasdaq / S&P 500", icon: "\u{1F4C8}", w: 0.09, q: '(nasdaq OR "wall street" OR "stock market" OR "S&P 500")' },
+  { id: "vix", g: "markets", name: "Paura borse (VIX)", icon: "\u{1F4C9}", w: 0.05, q: null },
+  { id: "yields", g: "markets", name: "Rendimenti bond", icon: "\u{1F4DC}", w: 0.04, q: '("treasury yields" OR "bond yields" OR "10-year yield")' },
+  { id: "oil", g: "markets", name: "Petrolio", icon: "\u{1F6E2}\uFE0F", w: 0.06, q: '("oil price" OR crude OR OPEC OR brent)' },
+  { id: "gas", g: "markets", name: "Gas", icon: "\u{1F525}", w: 0.05, q: '("natural gas" OR LNG OR "gas price" OR pipeline)' },
+  { id: "gold", g: "markets", name: "Oro e argento", icon: "\u{1F947}", w: 0.03, q: '("gold price" OR bullion OR silver)' },
+  { id: "metals", g: "markets", name: "Rame e metalli", icon: "\u{1F529}", w: 0.02, q: '(copper OR lithium OR "rare earths" OR nickel)' },
+  { id: "food", g: "markets", name: "Grano e cibo", icon: "\u{1F33E}", w: 0.04, q: '(wheat OR grain OR "food prices" OR corn OR harvest OR fertilizer)' },
+  { id: "power", g: "markets", name: "Elettricit\xE0", icon: "\u26A1", w: 0.02, q: '(blackout OR "power outage" OR "electricity prices" OR "energy crisis")' },
+  // --- Geopolitica e sicurezza ---
+  { id: "war", g: "geo", name: "Guerre", icon: "\u2694\uFE0F", w: 0.09, q: '(war OR airstrike OR invasion OR missile OR "military offensive")' },
+  { id: "arms", g: "geo", name: "Armi e nucleare", icon: "\u{1F6E1}\uFE0F", w: 0.05, q: '(weapons OR "arms deal" OR "defense spending" OR nuclear OR ammunition)' },
+  { id: "terror", g: "geo", name: "Terrorismo", icon: "\u{1F6A8}", w: 0.03, q: '(terrorist OR "terror attack" OR bombing OR hostage)' },
+  { id: "trade", g: "geo", name: "Dazi e sanzioni", icon: "\u{1F6A7}", w: 0.05, q: '(tariffs OR sanctions OR "trade war" OR embargo OR "export ban")' },
+  { id: "politics", g: "geo", name: "Elezioni e politica", icon: "\u{1F5F3}\uFE0F", w: 0.04, q: '(election OR coup OR impeachment OR "government shutdown" OR "political crisis")' },
+  { id: "china", g: "geo", name: "Cina e Taiwan", icon: "\u{1F409}", w: 0.04, q: "China (Taiwan OR economy OR stimulus OR yuan OR Beijing)" },
+  { id: "cyber", g: "geo", name: "Attacchi informatici", icon: "\u{1F4BB}", w: 0.03, q: '(cyberattack OR ransomware OR "data breach" OR hackers)' },
+  // --- Società e logistica ---
+  { id: "strike", g: "society", name: "Scioperi e proteste", icon: "\u270A", w: 0.03, q: '(strike OR walkout OR "labor protest" OR "general strike" OR riots)' },
+  { id: "air", g: "society", name: "Aerei", icon: "\u2708\uFE0F", w: 0.02, q: '(airline OR airport OR "flight cancellations" OR aviation OR "plane crash")' },
+  { id: "shipping", g: "society", name: "Navi e trasporti", icon: "\u{1F6A2}", w: 0.03, q: '(shipping OR "Suez Canal" OR "Red Sea" OR "supply chain" OR port OR freight)' },
+  // --- Natura e salute ---
+  { id: "weather", g: "nature", name: "Meteo estremo", icon: "\u{1F32A}\uFE0F", w: 0.04, q: "(hurricane OR flood OR drought OR heatwave OR wildfire OR typhoon)" },
+  { id: "quake", g: "nature", name: "Terremoti e vulcani", icon: "\u{1F30B}", w: 0.02, q: "(earthquake OR tsunami OR volcano OR eruption)" },
+  { id: "med", g: "nature", name: "Medicina e epidemie", icon: "\u{1F48A}", w: 0.04, q: '(pandemic OR outbreak OR epidemic OR virus OR "drug shortage")' },
+  { id: "water", g: "nature", name: "Acqua", icon: "\u{1F4A7}", w: 0.02, q: '("water shortage" OR "water crisis" OR dam OR "water supply")' }
+];
+const SYM_LABEL = { "^ndq": "Nasdaq", "^spx": "S&P", "dx.f": "DXY", "10usy.b": "10Y", "cl.f": "WTI", "ng.f": "Gas", "gc.f": "Oro", "si.f": "Argento", "hg.f": "Rame", "zw.f": "Grano", "zc.f": "Mais" };
+const HALVING = Date.UTC(2024, 3, 20);
+const S = {
+  coins: [],
+  risk: {},
+  riskDetail: {},
+  ai: null,
+  world: null,
+  filter: "all",
+  q: "",
+  sort: "rank",
+  count: 100,
+  stars: new Set(load("aurora.stars", [])),
+  lastSignals: load("aurora.lastSignals", {}),
+  sources: {}
+};
+function load(k, d) {
+  try {
+    const v = localStorage.getItem(k);
+    return v ? JSON.parse(v) : d;
+  } catch (e) {
+    return d;
+  }
+}
+function save(k, v) {
+  try {
+    localStorage.setItem(k, JSON.stringify(v));
+  } catch (e) {
+  }
+}
+const $ = (s) => document.querySelector(s);
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const esc = (s) => String(s != null ? s : "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+function fmtP(p) {
+  if (p == null) return "\u2013";
+  const d = p >= 1e3 ? 0 : p >= 1 ? 2 : p >= 0.01 ? 4 : 8;
+  return "$" + p.toLocaleString("it-IT", { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+const fmtPct = (x, d = 1) => (x >= 0 ? "+" : "") + x.toFixed(d) + "%";
+const fmtDate = (d) => d.toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" });
+function setStatus(t) {
+  $("#status").textContent = t;
+}
+function setSource(k, state, label) {
+  S.sources[k] = { state, label };
+  renderSources();
+}
+async function getJSON(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+function ema(a, n) {
+  const k = 2 / (n + 1);
+  const out = [a[0]];
+  for (let i = 1; i < a.length; i++) out.push(a[i] * k + out[i - 1] * (1 - k));
+  return out;
+}
+function rsi(p, n = 14) {
+  if (p.length < n + 1) return 50;
+  let g = 0, l = 0;
+  for (let i = 1; i <= n; i++) {
+    const d = p[i] - p[i - 1];
+    d > 0 ? g += d : l -= d;
+  }
+  g /= n;
+  l /= n;
+  for (let i = n + 1; i < p.length; i++) {
+    const d = p[i] - p[i - 1];
+    g = (g * (n - 1) + Math.max(d, 0)) / n;
+    l = (l * (n - 1) + Math.max(-d, 0)) / n;
+  }
+  return l === 0 ? 100 : 100 - 100 / (1 + g / l);
+}
+function std(a) {
+  const m = a.reduce((s, x) => s + x, 0) / a.length;
+  return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length);
+}
+function analyze(c, risk, ctx = {}) {
+  var _a, _b, _c, _d, _e, _f;
+  const p = (((_a = c.sparkline_in_7d) == null ? void 0 : _a.price) || []).filter((x) => x > 0);
+  const sym = (c.symbol || "").toLowerCase();
+  const isStable = STABLES.has(sym) || p.length > 20 && Math.abs(c.current_price - 1) < 0.02 && std(p) / c.current_price < 4e-3;
+  if (isStable || p.length < 40) return { stable: true };
+  const last = c.current_price || p[p.length - 1];
+  const rets = [];
+  for (let i = 1; i < p.length; i++) rets.push(Math.log(p[i] / p[i - 1]));
+  const volH = std(rets) || 1e-4, volD = volH * Math.sqrt(24);
+  const R = rsi(p);
+  const e12 = ema(p, 12), e26 = ema(p, 26);
+  const macd = e12.map((v, i) => v - e26[i]);
+  const sig = ema(macd, 9);
+  const hist = macd[macd.length - 1] - sig[sig.length - 1];
+  const e50 = ema(p, 50);
+  const trend = last / e50[e50.length - 1] - 1;
+  const mom24 = p.length > 25 ? last / p[p.length - 25] - 1 : 0;
+  const mn = Math.min(...p), mx = Math.max(...p);
+  const rangePos = mx > mn ? (last - mn) / (mx - mn) : 0.5;
+  const sTrend = Math.tanh(trend / volD);
+  const sMACD = Math.tanh(hist / (last * volH * 0.5));
+  const sMom = Math.tanh(mom24 / volD);
+  const sRSI = clamp((50 - R) / 25, -1, 1);
+  const sRange = (0.5 - rangePos) * 0.6;
+  const tech = 0.25 * sTrend + 0.25 * sMACD + 0.2 * sMom + 0.2 * sRSI + 0.1 * sRange;
+  const isBTC = sym === "btc";
+  const ch30 = ((_b = c.price_change_percentage_30d_in_currency) != null ? _b : 0) / 100;
+  const s30 = Math.tanh(ch30 / (volD * Math.sqrt(30)));
+  const liq = c.market_cap ? (c.total_volume || 0) / c.market_cap : 0;
+  const sLiq = liq < 0.01 ? -0.4 : liq < 0.03 ? -0.15 : liq > 0.5 ? -0.2 : 0.05;
+  const dil = c.total_supply ? (c.circulating_supply || 0) / c.total_supply : c.max_supply ? (c.circulating_supply || 0) / c.max_supply : 1;
+  const sDil = dil < 0.3 ? -0.5 : dil < 0.6 ? -0.2 : 0;
+  const ath = ((_c = c.ath_change_percentage) != null ? _c : -50) / 100;
+  const sAth = ath > -0.05 ? -0.25 : ath < -0.9 ? -0.2 : 0;
+  const f = (_d = ctx.funding) == null ? void 0 : _d[sym.toUpperCase() + "USDT"];
+  const sFund = f == null ? 0 : -Math.tanh((f * 1e4 - 1) / 3);
+  const sBTC = isBTC ? 0 : (_e = ctx.btcTech) != null ? _e : 0;
+  const sDom = isBTC ? 0 : (_f = ctx.domTrend) != null ? _f : 0;
+  const coin = 0.3 * s30 + 0.2 * sLiq + 0.15 * sDil + 0.1 * sAth + 0.25 * sFund;
+  const techAll = clamp(0.65 * tech + 0.2 * coin + (isBTC ? 0.15 * tech : 0.1 * sBTC + 0.05 * sDom), -1, 1);
+  const macro = clamp((50 - risk) / 50, -1, 1);
+  const betaW = clamp(0.25 + volD * 4, 0.25, 0.45);
+  const score = clamp((1 - betaW) * techAll + betaW * macro, -1, 1);
+  const a = Math.abs(score);
+  const buy = score >= 0;
+  const horizon = Math.round(clamp(3 + 12 * (1 - a), 2, 21));
+  const liqWiden = liq < 0.02 ? 1.3 : 1;
+  const move = Math.max(0.015, volD * Math.sqrt(horizon) * (0.55 + a));
+  const stop = Math.max(0.01, volD * Math.sqrt(horizon) * 0.8 * liqWiden);
+  const date = new Date(Date.now() + horizon * 864e5);
+  const wk = [0, 6].includes((/* @__PURE__ */ new Date()).getDay());
+  const conf = Math.round(clamp(50 + a * 100 - (liq < 0.01 ? 8 : 0) - (dil < 0.3 ? 5 : 0) - (wk ? 3 : 0) - (ctx.coverage != null ? (1 - ctx.coverage) * 10 : 0), 51, 95));
+  return {
+    stable: false,
+    score,
+    buy,
+    conf,
+    weak: a < 0.1,
+    horizon,
+    move,
+    stop,
+    date,
+    target: buy ? last * (1 + move) : last * (1 - move),
+    stopPrice: buy ? last * (1 - stop) : last * (1 + stop),
+    R,
+    hist,
+    trend,
+    mom24,
+    volD,
+    rangePos,
+    tech,
+    macro,
+    ch30,
+    liq,
+    dil,
+    ath,
+    f,
+    wk,
+    parts: { sTrend, sMACD, sMom, sRSI, sRange, s30, sLiq, sDil, sAth, sFund, sBTC, sDom },
+    p,
+    e12,
+    e50
+  };
+}
+function toneToRisk(tone) {
+  return clamp(50 + (-tone - 2.5) * 11, 0, 100);
+}
+async function gdeltTone(q) {
+  var _a, _b;
+  const url = "".concat(GDELT, "?query=").concat(encodeURIComponent(q + " sourcelang:english"), "&mode=timelinetone&timespan=3d&format=json");
+  const j = await getJSON(url);
+  const data = ((_b = (_a = j.timeline) == null ? void 0 : _a[0]) == null ? void 0 : _b.data) || [];
+  if (!data.length) throw new Error("vuoto");
+  const vals = data.map((d) => d.value);
+  const cut = Math.max(1, Math.floor(vals.length * 2 / 3));
+  const avg = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+  const recent = avg(vals.slice(cut)), before = avg(vals.slice(0, cut));
+  return { recent, before };
+}
+async function gdeltHeadlines() {
+  const q = '(bitcoin OR crypto OR war OR oil OR nasdaq OR "gas price" OR wheat OR strike) sourcelang:english';
+  const j = await getJSON("".concat(GDELT, "?query=").concat(encodeURIComponent(q), "&mode=artlist&maxrecords=25&sort=datedesc&timespan=1d&format=json"));
+  return (j.articles || []).map((a) => ({ t: a.title, u: a.url, s: a.domain }));
+}
+async function stooqQuotes() {
+  const syms = ["^ndq", "^spx", "^vix", "dx.f", "10usy.b", "cl.f", "ng.f", "gc.f", "si.f", "hg.f", "zw.f", "zc.f"];
+  const url = "https://stooq.com/q/l/?s=" + syms.map(encodeURIComponent).join("+") + "&f=sd2t2ohlc&h&e=csv";
+  const txt = await (await fetch(url)).text();
+  const out = {};
+  txt.trim().split("\n").slice(1).forEach((line) => {
+    const [sym, , , o, , , c] = line.split(",");
+    const O = parseFloat(o), C = parseFloat(c);
+    if (O > 0 && C > 0) out[sym.toLowerCase()] = { price: C, chg: (C / O - 1) * 100 };
+  });
+  if (!Object.keys(out).length) throw new Error("vuoto");
+  return out;
+}
+async function weatherRisk() {
+  const lat = [41.88, 50.45, -23.55, 29.76, 30.04, 51.92], lon = [-87.63, 30.52, -46.63, -95.36, 31.24, 4.48];
+  const names = ["Midwest USA", "Ucraina", "Brasile", "Golfo del Messico", "Suez", "Nord Europa"];
+  const url = "https://api.open-meteo.com/v1/forecast?latitude=".concat(lat, "&longitude=").concat(lon, "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&forecast_days=3&timezone=UTC");
+  let j = await getJSON(url);
+  if (!Array.isArray(j)) j = [j];
+  let score = 0;
+  const hits = [];
+  j.forEach((loc, i) => {
+    const d = loc.daily;
+    let s = 0;
+    for (let k = 0; k < d.time.length; k++) {
+      s += clamp((d.wind_speed_10m_max[k] - 45) / 40, 0, 1) + clamp((d.precipitation_sum[k] - 20) / 50, 0, 1) + clamp((d.temperature_2m_max[k] - 36) / 8, 0, 1) + clamp((-12 - d.temperature_2m_min[k]) / 12, 0, 1);
+    }
+    if (s > 0.4) hits.push(names[i]);
+    score += s;
+  });
+  return { risk: clamp(score / (j.length * 3 * 1.2) * 100 + 15, 0, 100), hits };
+}
+async function cryptoGlobal() {
+  var _a, _b;
+  const j = (await getJSON("".concat(CG, "/global"))).data;
+  const dom = (_a = j.market_cap_percentage) == null ? void 0 : _a.btc;
+  const prev = load("aurora.dom", null);
+  let trend = 0;
+  if (prev && Date.now() - prev.at > 6 * 36e5) {
+    trend = dom - prev.v;
+    save("aurora.dom", { v: dom, at: Date.now(), trend });
+  } else if (prev) {
+    trend = (_b = prev.trend) != null ? _b : 0;
+  } else save("aurora.dom", { v: dom, at: Date.now(), trend: 0 });
+  return { chg: j.market_cap_change_percentage_24h_usd, dom, trend };
+}
+async function fundingRates() {
+  const j = await getJSON("https://fapi.binance.com/fapi/v1/premiumIndex");
+  const m = {};
+  j.forEach((x) => {
+    m[x.symbol] = parseFloat(x.lastFundingRate);
+  });
+  return m;
+}
+function cycleRisk() {
+  const months = (Date.now() - HALVING) / (30.44 * 864e5);
+  let r, phase;
+  if (months < 12) {
+    r = 35;
+    phase = "fase di crescita";
+  } else if (months < 18) {
+    r = 50;
+    phase = "zona dei massimi storici";
+  } else if (months < 30) {
+    r = 68;
+    phase = "fase ribassista storica";
+  } else if (months < 42) {
+    r = 48;
+    phase = "accumulo / ripresa";
+  } else {
+    r = 40;
+    phase = "pre\u2011halving";
+  }
+  return { risk: r, note: "".concat(Math.round(months), " mesi dall'halving \xB7 ").concat(phase) };
+}
+async function fearGreed() {
+  const j = await getJSON("https://api.alternative.me/fng/?limit=2");
+  const v = +j.data[0].value;
+  return { value: v, label: j.data[0].value_classification, risk: 100 - v };
+}
+async function refreshWorld() {
+  if (S.worldBusy) return;
+  S.worldBusy = true;
+  try {
+    await refreshWorldInner();
+  } finally {
+    S.worldBusy = false;
+  }
+}
+async function refreshWorldInner() {
+  const R = S.risk, D = S.riskDetail;
+  FACTORS.forEach((f) => {
+    if (R[f.id] == null) renderFactor(f.id, null, "in attesa\u2026", true);
+  });
+  const fast = [
+    fearGreed().then((fg) => {
+      R.fng = fg.risk;
+      D.fng = "".concat(fg.value, "/100 \xB7 ").concat(fg.label);
+      setSource("fng", "ok", "Fear&Greed");
+    }).catch(() => setSource("fng", "ko", "Fear&Greed")),
+    weatherRisk().then((w) => {
+      R.weatherObs = w.risk;
+      D.weatherObs = w.hits.length ? "Allerta: " + w.hits.join(", ") : "Aree chiave tranquille";
+      setSource("meteo", "ok", "Meteo");
+    }).catch(() => setSource("meteo", "ko", "Meteo")),
+    stooqQuotes().then((q) => {
+      S.world = q;
+      setSource("stooq", "ok", "Borse/materie prime");
+    }).catch(() => {
+      S.world = null;
+      setSource("stooq", "ko", "Borse/materie prime");
+    }),
+    cryptoGlobal().then((g) => {
+      R.mktcap = clamp(50 - g.chg * 8, 0, 100);
+      D.mktcap = "".concat(fmtPct(g.chg, 2), " in 24h");
+      S.domTrend = clamp(-g.trend / 2, -1, 1);
+      R.dominance = clamp(50 + g.trend * 15, 0, 100);
+      D.dominance = "".concat(g.dom.toFixed(1), "% ").concat(g.trend > 0 ? "\u2197 in salita (altcoin deboli)" : g.trend < 0 ? "\u2198 in calo (altcoin forti)" : "");
+    }).catch(() => {
+    }),
+    fundingRates().then((fm) => {
+      S.funding = fm;
+      setSource("fund", "ok", "Funding");
+      const avg = ["BTCUSDT", "ETHUSDT", "SOLUSDT"].map((s) => fm[s]).filter((x) => x != null);
+      if (avg.length) {
+        const f = avg.reduce((s, x) => s + x, 0) / avg.length;
+        R.leverage = clamp(45 + (f * 1e4 - 1) * 12, 0, 100);
+        D.leverage = "funding medio ".concat((f * 100).toFixed(4), "% ").concat(f * 1e4 > 2 ? "\xB7 troppa leva long" : f < 0 ? "\xB7 prevalgono gli short" : "");
+      }
+    }).catch(() => setSource("fund", "ko", "Funding")),
+    gdeltHeadlines().then(renderTicker).catch(() => {
+    })
+  ];
+  const cy = cycleRisk();
+  R.cycle = cy.risk;
+  D.cycle = cy.note;
+  await Promise.all(fast);
+  computeRisk();
+  setSource("gdelt", "wait", "Notizie mondo");
+  let ok = 0;
+  for (const f of FACTORS.filter((f2) => f2.q)) {
+    await sleep(5500);
+    try {
+      const t = await gdeltTone(f.q);
+      const base = toneToRisk(t.recent);
+      const trend = clamp((t.before - t.recent) * 10, -15, 15);
+      R["news_" + f.id] = clamp(base + trend, 0, 100);
+      D["news_" + f.id] = "tono notizie ".concat(t.recent.toFixed(1), " ").concat(t.recent < t.before ? "\u2198 peggiora" : "\u2197 migliora");
+      ok++;
+    } catch (e) {
+      D["news_" + f.id] = D["news_" + f.id] || "notizie non disponibili";
+    }
+    computeRisk();
+  }
+  setSource("gdelt", ok ? "ok" : "ko", "Notizie mondo");
+  computeRisk();
+}
+function computeRisk() {
+  var _a;
+  const R = S.risk, D = S.riskDetail, W = S.world, ai = ((_a = S.ai) == null ? void 0 : _a.scores) || {};
+  const out = {}, detail = {};
+  const mkt = {
+    nasdaq: [["^ndq", (c) => 50 - c * 15], ["^spx", (c) => 50 - c * 15]],
+    // borse giù = rischio
+    dollar: [["dx.f", (c) => 50 + c * 20]],
+    // dollaro forte = crypto deboli
+    yields: [["10usy.b", (c) => 50 + c * 5]],
+    // rendimenti su = denaro più caro
+    oil: [["cl.f", (c) => 45 + c * 6]],
+    gas: [["ng.f", (c) => 45 + c * 4]],
+    gold: [["gc.f", (c) => 45 + c * 10], ["si.f", (c) => 45 + c * 5]],
+    // corsa ai beni rifugio = paura
+    metals: [["hg.f", (c) => 50 - c * 8]],
+    // rame giù = timori di recessione
+    food: [["zw.f", (c) => 45 + c * 6], ["zc.f", (c) => 45 + c * 6]]
+  };
+  const direct = ["fng", "mktcap", "dominance", "leverage", "cycle", "breadth"];
+  for (const f of FACTORS) {
+    const parts = [];
+    const notes = [];
+    if (direct.includes(f.id) && R[f.id] != null) {
+      parts.push(R[f.id]);
+      notes.push(D[f.id]);
+    }
+    if (R["news_" + f.id] != null) {
+      parts.push(R["news_" + f.id]);
+      notes.push(D["news_" + f.id]);
+    }
+    if (f.id === "weather" && R.weatherObs != null) {
+      parts.push(R.weatherObs);
+      notes.push(D.weatherObs);
+    }
+    if (f.id === "vix" && (W == null ? void 0 : W["^vix"])) {
+      const v = W["^vix"].price;
+      parts.push(clamp((v - 12) * 4, 0, 100));
+      notes.push("VIX ".concat(v.toFixed(1)));
+    }
+    if (W && mkt[f.id]) {
+      for (const [sym, fn] of mkt[f.id]) {
+        const q = W[sym];
+        if (!q) continue;
+        parts.push(clamp(fn(q.chg), 0, 100));
+        notes.unshift("".concat(SYM_LABEL[sym] || sym, " ").concat(fmtPct(q.chg, 2)));
+      }
+    }
+    if (ai[f.id] != null) {
+      parts.push(ai[f.id]);
+      notes.push("AI: " + ai[f.id]);
+    }
+    if (parts.length) {
+      out[f.id] = parts.reduce((s, x) => s + x, 0) / parts.length;
+      detail[f.id] = notes.filter(Boolean).join(" \xB7 ");
+    }
+    renderFactor(f.id, out[f.id], detail[f.id] || "in attesa\u2026", out[f.id] == null);
+  }
+  let sw = 0, sv = 0;
+  for (const f of FACTORS) if (out[f.id] != null) {
+    sw += f.w;
+    sv += f.w * out[f.id];
+  }
+  const total = sw ? sv / sw : 50;
+  S.globalRisk = total;
+  S.coverage = sw / FACTORS.reduce((s, f) => s + f.w, 0);
+  renderGauge(total, S.coverage);
+  recomputeSignals();
+}
+function aiDue() {
+  var _a;
+  if (!$("#aiAuto").checked || !$("#aiKey").value.trim() || $("#aiRun").disabled) return false;
+  const last = Math.max(((_a = S.ai) == null ? void 0 : _a.at) || 0, load("aurora.aiTried", 0) + 20 * 6e4 - AI_MS);
+  return Date.now() - last >= AI_MS;
+}
+function nextAI() {
+  var _a;
+  return ((_a = S.ai) == null ? void 0 : _a.at) ? new Date(S.ai.at + AI_MS) : null;
+}
+function renderSchedule() {
+  const el = $("#aiNext");
+  if (!el) return;
+  if (!$("#aiKey").value.trim()) {
+    el.textContent = "Inserisci la chiave per attivare la ricerca automatica ogni 3 ore.";
+    return;
+  }
+  if (!$("#aiAuto").checked) {
+    el.textContent = "Ricerca automatica disattivata.";
+    return;
+  }
+  const n = nextAI();
+  el.textContent = n ? "Prossima ricerca AI automatica: ".concat(n.toLocaleString("it-IT", { weekday: "short", hour: "2-digit", minute: "2-digit" })) : "Prima ricerca AI in corso o imminente.";
+}
+async function runAI() {
+  var _a;
+  save("aurora.aiTried", Date.now());
+  const key = $("#aiKey").value.trim();
+  if (!key) {
+    $("#aiOut").textContent = "Inserisci la tua chiave API Anthropic.";
+    return;
+  }
+  try {
+    localStorage.setItem("aurora.aikey", key);
+  } catch (e) {
+  }
+  $("#aiRun").disabled = true;
+  $("#aiOut").textContent = "L'AI sta cercando le notizie di oggi sul web\u2026 (30\u201390 secondi)";
+  setSource("ai", "wait", "AI");
+  const aiF = FACTORS.filter((f) => f.q);
+  const ids = aiF.map((f) => "".concat(f.id, " (").concat(f.name, ")")).join(", ");
+  const tpl = JSON.stringify({ scores: aiF.reduce((o, f) => (o[f.id] = 0, o), {}), crypto_bias: "rialzista|ribassista|neutro" });
+  const prompt = "Oggi \xE8 ".concat((/* @__PURE__ */ new Date()).toISOString().slice(0, 10), ". Cerca sul web le notizie pi\xF9 recenti (ultime 24-48 ore) che possono influenzare i mercati e le criptovalute.\nValuta il livello di rischio per i mercati da 0 (calmo, positivo) a 100 (rischio estremo) per ciascuna categoria: ").concat(ids, ".\nRispondi in italiano con 4-6 frasi brevi che riassumono i fatti principali di oggi, poi in fondo un unico blocco JSON valido in questo formato esatto:\n").concat(tpl);
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2026-10-21",
+        "anthropic-beta": "server-side-fallback-2026-07-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-opus-5-5",
+        max_tokens: 16e3,
+        output_config: { effort: "low" },
+        fallbacks: "default",
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 12 }],
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(((_a = j.error) == null ? void 0 : _a.message) || r.status);
+    if (j.stop_reason === "refusal") throw new Error("richiesta rifiutata dal modello");
+    const text = (j.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+    const m = text.match(/\{[\s\S]*"scores"[\s\S]*\}/);
+    if (!m) throw new Error("risposta senza punteggi");
+    const parsed = JSON.parse(m[0]);
+    const scores = {};
+    for (const [k, v] of Object.entries(parsed.scores || {})) if (isFinite(+v)) scores[k] = clamp(+v, 0, 100);
+    S.ai = { scores, bias: parsed.crypto_bias, at: Date.now(), text: text.replace(m[0], "").trim() };
+    save("aurora.ai", S.ai);
+    renderAI();
+    setSource("ai", "ok", "AI");
+    computeRisk();
+  } catch (e) {
+    $("#aiOut").textContent = "Errore AI: " + e.message;
+    setSource("ai", "ko", "AI");
+  } finally {
+    $("#aiRun").disabled = false;
+    renderSchedule();
+  }
+}
+function renderAI() {
+  if (!S.ai) return;
+  $("#aiOut").innerHTML = "<b>Ultima analisi: ".concat(new Date(S.ai.at).toLocaleString("it-IT"), "</b> \xB7 bias crypto: <b>").concat(esc(S.ai.bias || "\u2013"), "</b>\n\n").concat(esc(S.ai.text));
+}
+async function refreshCoins() {
+  setStatus("Aggiorno i prezzi\u2026");
+  try {
+    const pages = S.count > 100 ? [1, 2, 3] : [1];
+    let all = [];
+    for (const pg of pages) {
+      const per = S.count > 100 ? 100 : S.count;
+      const data = await getJSON("".concat(CG, "/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=").concat(per, "&page=").concat(pg, "&sparkline=true&price_change_percentage=1h,24h,7d,30d"));
+      all = all.concat(data);
+      if (pages.length > 1) await sleep(1200);
+    }
+    S.coins = all.slice(0, S.count);
+    setSource("cg", "ok", "Prezzi crypto");
+    recomputeSignals();
+    setStatus("Live \xB7 aggiornato alle " + (/* @__PURE__ */ new Date()).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
+  } catch (e) {
+    setSource("cg", "ko", "Prezzi crypto");
+    setStatus("Prezzi non disponibili (limite API?) \xB7 riprovo tra poco");
+    if (!S.coins.length) $("#coins").innerHTML = '<div class="empty">Non riesco a caricare i prezzi da CoinGecko. Riprovo automaticamente.</div>';
+  }
+}
+function recomputeSignals() {
+  var _a;
+  const risk = (_a = S.globalRisk) != null ? _a : 50;
+  const ctx = { funding: S.funding, domTrend: S.domTrend, coverage: S.coverage };
+  const btc = S.coins.find((c) => c.symbol === "btc");
+  if (btc) {
+    const b = analyze(btc, risk, ctx);
+    ctx.btcTech = b.stable ? 0 : b.tech;
+  }
+  S.coins.forEach((c) => {
+    c.a = analyze(c, risk, ctx);
+  });
+  const act = S.coins.filter((c) => c.a && !c.a.stable);
+  if (act.length > 4) {
+    const up = act.filter((c) => c.a.trend > 0).length / act.length;
+    const nb = clamp(100 - up * 100, 0, 100);
+    if (S.risk.breadth == null || Math.abs(S.risk.breadth - nb) > 0.5) {
+      S.risk.breadth = nb;
+      S.riskDetail.breadth = "".concat(Math.round(up * 100), "% delle monete in trend positivo");
+      computeRisk();
+      return;
+    }
+  }
+  checkFlips();
+  renderCoins();
+}
+function checkFlips() {
+  const changed = [];
+  S.coins.forEach((c) => {
+    if (!c.a || c.a.stable) return;
+    const s = c.a.buy ? "buy" : "sell";
+    const prev = S.lastSignals[c.id];
+    if (prev && prev !== s && S.stars.has(c.id)) changed.push(c);
+    S.lastSignals[c.id] = s;
+  });
+  save("aurora.lastSignals", S.lastSignals);
+  if (changed.length && "Notification" in window && Notification.permission === "granted") {
+    changed.forEach((c) => new Notification("".concat(c.name, ": ").concat(c.a.buy ? "COMPRA" : "VENDI"), {
+      body: "".concat(fmtP(c.current_price), " \xB7 obiettivo ").concat(fmtPct(c.a.move * 100), " entro ").concat(fmtDate(c.a.date))
+    }));
+  }
+}
+function riskColor(v) {
+  return v < 35 ? "var(--a-green)" : v < 50 ? "var(--a-teal)" : v < 65 ? "var(--a-violet)" : "var(--a-pink)";
+}
+function riskLabel(v) {
+  return v < 30 ? "Calmo" : v < 45 ? "Moderato" : v < 60 ? "Teso" : v < 75 ? "Alto" : "Estremo";
+}
+function renderFactor(id, v, note, loading) {
+  const f = FACTORS.find((x) => x.id === id);
+  let el = document.getElementById("f-" + id);
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "f";
+    el.id = "f-" + id;
+    el.innerHTML = '<div class="n"><span>'.concat(f.icon, " ").concat(f.name, '</span><span class="lv"></span></div><div class="v mono">--</div><div class="d"></div><div class="bar"></div>');
+    let grp = document.getElementById("g-" + f.g);
+    if (!grp) {
+      const h = document.createElement("div");
+      h.className = "ghead";
+      h.textContent = GROUPS[f.g];
+      grp = document.createElement("div");
+      grp.className = "factors";
+      grp.id = "g-" + f.g;
+      $("#factors").append(h, grp);
+    }
+    grp.appendChild(el);
+  }
+  el.classList.toggle("loading", !!loading);
+  el.querySelector(".v").textContent = v == null ? "--" : Math.round(v);
+  el.querySelector(".v").style.color = v == null ? "" : riskColor(v);
+  el.querySelector(".lv").textContent = v == null ? "" : riskLabel(v);
+  el.querySelector(".d").textContent = note || "";
+  el.querySelector(".bar").style.width = (v != null ? v : 0) + "%";
+  el.querySelector(".bar").style.background = v == null ? "transparent" : riskColor(v);
+}
+function renderGauge(v, coverage) {
+  const L = 251.3;
+  $("#garc").style.strokeDashoffset = L * (1 - v / 100);
+  const ang = Math.PI * (1 - v / 100);
+  $("#gneedle").setAttribute("cx", 100 + 80 * Math.cos(ang));
+  $("#gneedle").setAttribute("cy", 105 - 80 * Math.sin(ang));
+  $("#gval").textContent = Math.round(v);
+  $("#gval").style.color = riskColor(v);
+  $("#glabel").textContent = riskLabel(v) + (v >= 55 ? " \xB7 prudenza" : v <= 40 ? " \xB7 clima favorevole" : "");
+  const buys = S.coins.filter((c) => c.a && !c.a.stable && c.a.buy).length;
+  const sells = S.coins.filter((c) => c.a && !c.a.stable && !c.a.buy).length;
+  $("#gmeta").innerHTML = "Copertura dati ".concat(Math.round(coverage * 100), '% \xB7 <span class="up">').concat(buys, ' compra</span> \xB7 <span class="dn">').concat(sells, " vendi</span><br>Prossimo controllo notizie: ").concat(new Date(Date.now() + WORLD_MS).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
+}
+function renderSources() {
+  $("#sources").innerHTML = Object.values(S.sources).map((s) => '<span class="pill '.concat(s.state, '">').concat(s.state === "ok" ? "\u25CF" : s.state === "wait" ? "\u25CC" : "\u2715", " ").concat(esc(s.label), "</span>")).join("");
+}
+function renderTicker(list) {
+  if (!list.length) return;
+  $("#ticker").innerHTML = list.map((a) => '<a href="'.concat(esc(a.u), '" target="_blank" rel="noopener"><b>').concat(esc(a.s), "</b>").concat(esc(a.t), "</a>")).join("");
+}
+function sparkSVG(p, buy) {
+  if (!p || p.length < 2) return "";
+  const w = 300, h = 44, mn = Math.min(...p), mx = Math.max(...p), rg = mx - mn || 1;
+  const step = Math.max(1, Math.floor(p.length / 80));
+  const pts = [];
+  for (let i = 0; i < p.length; i += step) pts.push([i / (p.length - 1) * w, h - (p[i] - mn) / rg * (h - 4) - 2]);
+  const d = pts.map((q, i) => (i ? "L" : "M") + q[0].toFixed(1) + " " + q[1].toFixed(1)).join("");
+  const col = buy ? "#3dffa8" : "#ff5f8f";
+  const id = "g" + Math.random().toString(36).slice(2, 8);
+  return '<svg class="spark" viewBox="0 0 '.concat(w, " ").concat(h, '" preserveAspectRatio="none"><defs><linearGradient id="').concat(id, '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="').concat(col, '" stop-opacity=".35"/><stop offset="1" stop-color="').concat(col, '" stop-opacity="0"/></linearGradient></defs><path d="').concat(d, "L").concat(w, " ").concat(h, "L0 ").concat(h, 'Z" fill="url(#').concat(id, ')"/><path d="').concat(d, '" fill="none" stroke="').concat(col, '" stroke-width="1.6"/></svg>');
+}
+function renderCoins() {
+  let list = S.coins.filter((c) => c.a);
+  const q = S.q.toLowerCase();
+  if (q) list = list.filter((c) => c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q));
+  if (S.filter === "buy") list = list.filter((c) => !c.a.stable && c.a.buy);
+  if (S.filter === "sell") list = list.filter((c) => !c.a.stable && !c.a.buy);
+  if (S.filter === "star") list = list.filter((c) => S.stars.has(c.id));
+  const key = {
+    rank: (c) => {
+      var _a;
+      return (_a = c.market_cap_rank) != null ? _a : 9999;
+    },
+    score: (c) => c.a.stable ? 9 : -Math.abs(c.a.score),
+    gain: (c) => c.a.stable ? 9 : c.a.buy ? -c.a.move : 1,
+    chg: (c) => -(c.price_change_percentage_24h || 0)
+  }[S.sort];
+  list.sort((a, b) => key(a) - key(b));
+  if (!list.length) {
+    $("#coins").innerHTML = '<div class="empty">Nessuna moneta per questo filtro.</div>';
+    return;
+  }
+  $("#coins").innerHTML = list.map((c) => {
+    var _a;
+    const a = c.a, ch = c.price_change_percentage_24h || 0;
+    const star = '<button class="star '.concat(S.stars.has(c.id) ? "on" : "", '" data-star="').concat(esc(c.id), '" aria-label="Preferita">\u2605</button>');
+    const head = '<div class="ch"><img src="'.concat(esc(c.image), '" alt="" loading="lazy"><div class="nm"><b>').concat(esc(c.name), "</b><span>#").concat((_a = c.market_cap_rank) != null ? _a : "\u2013", " \xB7 ").concat(esc(c.symbol), "</span></div>").concat(star, "</div>");
+    if (a.stable) return '<div class="card coin" data-id="'.concat(esc(c.id), '">').concat(head, '<div class="sig"><span class="badge stable">STABILE</span><div class="conf">valore ancorato<b>').concat(fmtP(c.current_price), '</b></div></div><div class="note">Stablecoin o asset ancorato: nessun segnale di trading.</div></div>');
+    return '<div class="card coin" data-id="'.concat(esc(c.id), '">\n      ').concat(a.weak ? '<span class="weak">segnale debole</span>' : "", "\n      ").concat(head, '\n      <div class="sig"><span class="badge ').concat(a.buy ? "buy" : "sell", '">').concat(a.buy ? "COMPRA" : "VENDI", '</span><div class="conf">affidabilit\xE0<b class="mono">').concat(a.conf, '%</b></div></div>\n      <div class="price"><span class="p mono">').concat(fmtP(c.current_price), '</span><span class="chg mono ').concat(ch >= 0 ? "up" : "dn", '">').concat(fmtPct(ch), " 24h</span></div>\n      ").concat(sparkSVG(a.p, a.buy), '\n      <div class="plan">\n        <div>').concat(a.buy ? "Vendi a" : "Ricompra a", '<b class="mono">').concat(fmtP(a.target), "</b></div>\n        <div>").concat(a.buy ? "Guadagno" : "Calo atteso", '<b class="mono ').concat(a.buy ? "up" : "dn", '">').concat(a.buy ? "+" : "\u2212").concat((a.move * 100).toFixed(1), "%</b></div>\n        <div>Entro il<b>").concat(fmtDate(a.date), "</b></div>\n      </div>\n    </div>");
+  }).join("");
+}
+function openCoin(id) {
+  var _a, _b;
+  const c = S.coins.find((x) => x.id === id);
+  if (!c || !c.a) return;
+  const a = c.a;
+  if (a.stable) return;
+  const P = a.parts;
+  const reasons = [];
+  reasons.push(a.R < 30 ? "RSI ".concat(a.R.toFixed(0), ": ipervenduta, spesso rimbalza") : a.R > 70 ? "RSI ".concat(a.R.toFixed(0), ": ipercomprata, rischio di correzione") : "RSI ".concat(a.R.toFixed(0), ": zona neutra"));
+  reasons.push(a.hist > 0 ? "MACD sopra la linea di segnale: slancio in aumento" : "MACD sotto la linea di segnale: slancio in calo");
+  reasons.push(a.trend > 0 ? "Prezzo ".concat(fmtPct(a.trend * 100), " sopra la media mobile: trend positivo") : "Prezzo ".concat(fmtPct(a.trend * 100), " sotto la media mobile: trend negativo"));
+  reasons.push("Ultime 24 ore: ".concat(fmtPct(a.mom24 * 100), " \xB7 ultimi 30 giorni: ").concat(fmtPct(a.ch30 * 100)));
+  reasons.push(a.liq < 0.01 ? "Liquidit\xE0 bassa (scambi ".concat((a.liq * 100).toFixed(1), "% della capitalizzazione): prezzi facili da muovere, affidabilit\xE0 ridotta") : a.liq > 0.5 ? "Scambi anomali (".concat((a.liq * 100).toFixed(0), "% della capitalizzazione): possibile speculazione") : "Liquidit\xE0 buona (scambi ".concat((a.liq * 100).toFixed(1), "% della capitalizzazione)"));
+  if (a.dil < 0.6) reasons.push("Solo il ".concat((a.dil * 100).toFixed(0), "% dei token \xE8 in circolazione: futuri sblocchi possono spingere il prezzo gi\xF9"));
+  reasons.push(a.ath > -0.05 ? "Vicina al massimo storico: zona di possibile resistenza" : "".concat(fmtPct(a.ath * 100, 0), " dal massimo storico"));
+  if (a.f != null) reasons.push("Funding future ".concat((a.f * 100).toFixed(4), "%: ").concat(a.f * 1e4 > 2 ? "troppi acquisti a leva, rischio di liquidazioni" : a.f < 0 ? "prevalgono le scommesse al ribasso (possibile rimbalzo)" : "leva nella norma"));
+  if (c.symbol !== "btc") reasons.push("Bitcoin ".concat(P.sBTC >= 0 ? "in salute: aiuta" : "debole: frena", " le altcoin").concat(P.sDom ? P.sDom > 0 ? " \xB7 dominanza BTC in calo (favorevole)" : " \xB7 dominanza BTC in salita (sfavorevole)" : ""));
+  if (a.wk) reasons.push("Weekend: volumi pi\xF9 bassi, affidabilit\xE0 leggermente ridotta");
+  reasons.push("Ciclo halving: ".concat(S.riskDetail.cycle || "\u2013"));
+  reasons.push("Rischio mondo ".concat(Math.round((_a = S.globalRisk) != null ? _a : 50), "/100 (").concat(riskLabel((_b = S.globalRisk) != null ? _b : 50), "): ").concat(a.macro >= 0 ? "aiuta" : "frena", " le crypto"));
+  const top = FACTORS.map((f) => {
+    var _a2;
+    return { f, v: +((_a2 = $("#f-" + f.id + " .v")) == null ? void 0 : _a2.textContent) };
+  }).filter((x) => isFinite(x.v)).sort((x, y) => y.v - x.v).slice(0, 3);
+  if (top.length) reasons.push("Fattori pi\xF9 caldi ora: " + top.map((x) => "".concat(x.f.icon, " ").concat(x.f.name, " ").concat(x.v)).join(", "));
+  const meter = (label, v) => {
+    const pct = (v + 1) * 50;
+    const col = v >= 0 ? "var(--a-green)" : "var(--sell)";
+    return "<div><span>".concat(label, '</span><div class="meter"><i style="width:').concat(pct, "%;background:").concat(col, '"></i></div></div>');
+  };
+  $("#mbox").innerHTML = '\n    <div class="mhead"><img src="'.concat(esc(c.image), '" alt=""><div><b style="font-size:1.2rem">').concat(esc(c.name), '</b><div class="sub">').concat(esc(c.symbol.toUpperCase()), " \xB7 #").concat(c.market_cap_rank, '</div></div><button class="x" id="mclose">\u2715</button></div>\n    <div class="sig"><span class="badge ').concat(a.buy ? "buy" : "sell", '">').concat(a.buy ? "COMPRA OGGI" : "VENDI OGGI", '</span><div class="conf">affidabilit\xE0 stimata<b class="mono">').concat(a.conf, '%</b></div></div>\n    <canvas class="big" id="chart"></canvas>\n    <div class="kv">\n      <div><span>Prezzo ora</span><b class="mono">').concat(fmtP(c.current_price), "</b></div>\n      <div><span>").concat(a.buy ? "Obiettivo di vendita" : "Livello per ricomprare", '</span><b class="mono ').concat(a.buy ? "up" : "dn", '">').concat(fmtP(a.target), "</b></div>\n      <div><span>").concat(a.buy ? "Guadagno previsto" : "Calo previsto", '</span><b class="mono ').concat(a.buy ? "up" : "dn", '">').concat(a.buy ? "+" : "\u2212").concat((a.move * 100).toFixed(1), "%</b></div>\n      <div><span>Data prevista</span><b>").concat(fmtDate(a.date), " (").concat(a.horizon, " gg)</b></div>\n      <div><span>").concat(a.buy ? "Stop di sicurezza" : "Annulla se sale sopra", '</span><b class="mono">').concat(fmtP(a.stopPrice), '</b></div>\n      <div><span>Volatilit\xE0 giornaliera</span><b class="mono">').concat((a.volD * 100).toFixed(1), '%</b></div>\n    </div>\n    <div class="kv">\n      ').concat(meter("Trend", P.sTrend)).concat(meter("Slancio MACD", P.sMACD)).concat(meter("Momentum 24h", P.sMom)).concat(meter("RSI (contrarian)", P.sRSI)).concat(meter("Trend 30 giorni", P.s30)).concat(meter("Liquidit\xE0", P.sLiq)).concat(meter("Sblocchi token", P.sDil)).concat(meter("Leva / funding", P.sFund)).concat(c.symbol !== "btc" ? meter("Effetto Bitcoin", P.sBTC) : "").concat(meter("Rischio mondo", a.macro)).concat(meter("Punteggio finale", a.score), '\n    </div>\n    <h2 style="font-size:.8rem;letter-spacing:2px;text-transform:uppercase;color:var(--mute);font-weight:500">Perch\xE9</h2>\n    <ul class="why">').concat(reasons.map((r) => "<li>".concat(esc(r), "</li>")).join(""), '</ul>\n    <p class="note">Come leggerlo: ').concat(a.buy ? "se compri oggi, l'app suggerisce di vendere quando il prezzo arriva a ".concat(fmtP(a.target), " (circa ").concat(fmtPct(a.move * 100), "), con stima entro il ").concat(fmtDate(a.date), ". Se invece scende sotto ").concat(fmtP(a.stopPrice), ", vendi per limitare la perdita.") : "l'app si aspetta un calo verso ".concat(fmtP(a.target), " entro il ").concat(fmtDate(a.date), ". Se hai questa moneta, valuta di vendere oggi e ricomprare pi\xF9 in basso."), " Stima statistica, non una certezza.</p>");
+  $("#modal").classList.add("open");
+  $("#mclose").onclick = closeModal;
+  requestAnimationFrame(() => drawChart($("#chart"), a, c));
+}
+function closeModal() {
+  $("#modal").classList.remove("open");
+}
+function drawChart(cv, a, c) {
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr;
+  cv.height = H * dpr;
+  const g = cv.getContext("2d");
+  g.scale(dpr, dpr);
+  const p = a.p, lines = [a.target, a.stopPrice];
+  const mn = Math.min(...p, ...lines), mx = Math.max(...p, ...lines), pad = 14;
+  const fw = W * 0.82;
+  const X = (i) => pad + i / (p.length - 1) * (fw - pad), Y = (v) => H - pad - (v - mn) / (mx - mn || 1) * (H - 2 * pad);
+  g.strokeStyle = "rgba(140,200,255,.08)";
+  g.lineWidth = 1;
+  for (let k = 0; k < 5; k++) {
+    const y = pad + k * (H - 2 * pad) / 4;
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(W, y);
+    g.stroke();
+  }
+  const grad = g.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, "#3dffa8");
+  grad.addColorStop(0.4, "#00d4ff");
+  grad.addColorStop(0.75, "#9b6bff");
+  grad.addColorStop(1, "#ff5fd2");
+  const fill = g.createLinearGradient(0, 0, 0, H);
+  fill.addColorStop(0, "rgba(0,212,255,.28)");
+  fill.addColorStop(1, "rgba(0,212,255,0)");
+  g.beginPath();
+  p.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v)));
+  g.lineTo(X(p.length - 1), H);
+  g.lineTo(X(0), H);
+  g.closePath();
+  g.fillStyle = fill;
+  g.fill();
+  g.beginPath();
+  p.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v)));
+  g.strokeStyle = grad;
+  g.lineWidth = 2;
+  g.stroke();
+  g.beginPath();
+  a.e50.forEach((v, i) => i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v)));
+  g.strokeStyle = "rgba(232,246,255,.35)";
+  g.setLineDash([4, 4]);
+  g.lineWidth = 1;
+  g.stroke();
+  g.setLineDash([]);
+  const lx = X(p.length - 1), ly = Y(p[p.length - 1]);
+  const tCol = a.buy ? "#3dffa8" : "#ff5f8f";
+  const hl = (v, col, label) => {
+    g.strokeStyle = col;
+    g.setLineDash([6, 4]);
+    g.beginPath();
+    g.moveTo(lx, Y(v));
+    g.lineTo(W - 4, Y(v));
+    g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = col;
+    g.font = "11px JetBrains Mono, monospace";
+    g.textAlign = "right";
+    g.fillText(label, W - 6, Y(v) - 5);
+  };
+  hl(a.target, tCol, (a.buy ? "VENDI " : "RICOMPRA ") + fmtP(a.target));
+  hl(a.stopPrice, "rgba(255,211,107,.8)", "STOP " + fmtP(a.stopPrice));
+  g.strokeStyle = tCol;
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(lx, ly);
+  g.lineTo(W - 14, Y(a.target));
+  g.stroke();
+  g.fillStyle = "#e8f6ff";
+  g.beginPath();
+  g.arc(lx, ly, 4, 0, 7);
+  g.fill();
+  g.fillStyle = "rgba(143,166,200,.8)";
+  g.font = "11px Space Grotesk, sans-serif";
+  g.textAlign = "left";
+  g.fillText("ultimi 7 giorni", pad, H - 4);
+  g.textAlign = "right";
+  g.fillText("previsione \u2192 " + fmtDate(a.date), W - 6, H - 4);
+}
+$("#tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
+  S.filter = b.dataset.f;
+  renderCoins();
+});
+$("#q").addEventListener("input", (e) => {
+  S.q = e.target.value;
+  renderCoins();
+});
+$("#sort").addEventListener("change", (e) => {
+  S.sort = e.target.value;
+  renderCoins();
+});
+$("#count").addEventListener("change", (e) => {
+  S.count = +e.target.value;
+  refreshCoins();
+});
+$("#coins").addEventListener("click", (e) => {
+  const s = e.target.closest("[data-star]");
+  if (s) {
+    e.stopPropagation();
+    const id = s.dataset.star;
+    S.stars.has(id) ? S.stars.delete(id) : S.stars.add(id);
+    save("aurora.stars", [...S.stars]);
+    renderCoins();
+    return;
+  }
+  const c = e.target.closest(".coin");
+  if (c) openCoin(c.dataset.id);
+});
+$("#modal").addEventListener("click", (e) => {
+  if (e.target.id === "modal") closeModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeModal();
+});
+$("#btnRefresh").addEventListener("click", async () => {
+  $("#btnRefresh").disabled = true;
+  await refreshCoins();
+  refreshWorld();
+  $("#btnRefresh").disabled = false;
+});
+$("#btnNotify").addEventListener("click", async () => {
+  if (!("Notification" in window)) return alert("Il tuo browser non supporta le notifiche.");
+  const p = await Notification.requestPermission();
+  $("#btnNotify").textContent = p === "granted" ? "\u{1F514} Avvisi attivi" : "\u{1F515} Avvisi bloccati";
+});
+$("#aiRun").addEventListener("click", runAI);
+$("#aiAuto").addEventListener("change", (e) => {
+  save("aurora.aiAuto", e.target.checked);
+  renderSchedule();
+});
+$("#aiKey").addEventListener("change", () => {
+  try {
+    localStorage.setItem("aurora.aikey", $("#aiKey").value.trim());
+  } catch (e) {
+  }
+  renderSchedule();
+  if (aiDue()) runAI();
+});
+(async function boot() {
+  try {
+    const k = localStorage.getItem("aurora.aikey");
+    if (k) $("#aiKey").value = k;
+  } catch (e) {
+  }
+  $("#aiAuto").checked = load("aurora.aiAuto", true);
+  const ai = load("aurora.ai", null);
+  if (ai && Date.now() - ai.at < 24 * 36e5) {
+    S.ai = ai;
+    renderAI();
+    setSource("ai", "ok", "AI");
+  }
+  if ("Notification" in window && Notification.permission === "granted") $("#btnNotify").textContent = "\u{1F514} Avvisi attivi";
+  FACTORS.forEach((f) => renderFactor(f.id, null, "in attesa\u2026", true));
+  await refreshCoins();
+  refreshWorld();
+  S.lastPrice = Date.now();
+  S.lastWorld = Date.now();
+  const tick = () => {
+    const now = Date.now();
+    if (now - S.lastPrice >= PRICE_MS) {
+      S.lastPrice = now;
+      refreshCoins();
+    }
+    if (now - S.lastWorld >= WORLD_MS && !S.worldBusy) {
+      S.lastWorld = now;
+      refreshWorld();
+    }
+    if (aiDue()) runAI();
+    renderSchedule();
+  };
+  setInterval(tick, 6e4);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) tick();
+  });
+  if (aiDue()) runAI();
+  renderSchedule();
+})();
+</script>
+</body>
+</html>

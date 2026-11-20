@@ -1,0 +1,47 @@
+#!/bin/sh
+# Aurora Signal - avvio per macOS (Intel e Apple Silicon, macOS 10.11 e successivi).
+# Al primo avvio dal disco di installazione (DMG) si copia da solo in Applicazioni.
+
+APP_NAME="Aurora Signal"
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUNDLE="$(cd "$SELF_DIR/../.." && pwd)"
+RES="$BUNDLE/Contents/Resources"
+
+notify() {
+  /usr/bin/osascript -e "display dialog \"$1\" buttons {\"OK\"} default button 1 with title \"$APP_NAME\" with icon note" >/dev/null 2>&1
+}
+
+# --- 1. Installazione automatica -------------------------------------------
+# Se l'app è avviata dal DMG (/Volumes/...) o da una copia temporanea di macOS
+# (AppTranslocation), la copia in Applicazioni e riparte da lì.
+case "$BUNDLE" in
+  /Volumes/*|*/AppTranslocation/*)
+    DEST="/Applications"
+    if [ ! -w "$DEST" ]; then DEST="$HOME/Applications"; mkdir -p "$DEST"; fi
+    rm -rf "$DEST/$APP_NAME.app"
+    if /bin/cp -R "$BUNDLE" "$DEST/"; then
+      /usr/bin/xattr -dr com.apple.quarantine "$DEST/$APP_NAME.app" >/dev/null 2>&1
+      notify "Installazione completata! $APP_NAME è ora in $DEST e si apre subito. Puoi espellere il disco di installazione."
+      exec "$DEST/$APP_NAME.app/Contents/MacOS/AuroraSignal"
+    else
+      notify "Non riesco a copiare l'app in Applicazioni. Trascina l'icona $APP_NAME nella cartella Applicazioni."
+    fi
+    ;;
+esac
+
+# --- 2. Avvio --------------------------------------------------------------
+# I dati dell'app (preferiti, chiave AI, ultima analisi) restano nel browser.
+PAGE="$RES/app.html"
+URL="file://$(printf '%s' "$PAGE" | sed -e 's/%/%25/g' -e 's/ /%20/g')"
+
+# Finestra dedicata (senza barre del browser) se c'è Chrome, Edge, Brave o Chromium.
+for B in "Google Chrome" "Microsoft Edge" "Brave Browser" "Chromium"; do
+  for ROOT in "/Applications" "$HOME/Applications"; do
+    if [ -d "$ROOT/$B.app" ]; then
+      /usr/bin/open -na "$ROOT/$B.app" --args --app="$URL" && exit 0
+    fi
+  done
+done
+
+# Altrimenti il browser predefinito (Safari, Firefox, ...).
+/usr/bin/open "$PAGE"

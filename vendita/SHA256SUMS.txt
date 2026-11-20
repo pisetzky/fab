@@ -1,0 +1,7 @@
+bb00ffc4513fb6bdecb147c64fcec7087b93e2e343c967912fb46ca453047d2d  LEGGIMI.txt
+62cdda3b9dbc658ae474aa1c1fddb026a55a1a6ab4e48cd7cba777977bd5d822  LICENZA.txt
+3cdc3f358372c6efb2066e007cc27605010a948b2887057d2a7cb1e41cc40caf  Linux/aurora-signal-linux.tar.gz
+ce382dcece70a39f60566d46d2cddcd6e3aff490f53d83bcff410486a9b6392f  Mac/Aurora-Signal-1.0.0.dmg
+061d4ce553292a2c2cbc8970d74fe3745d2147f92953707f0039e3a2809af6f5  Web/Aurora Signal.html
+1b4b4021f443e680b39a7d222a24a8fb0bc60e53ddd147cbd050bd408a16eec0  Windows/Aurora-Signal-Setup-1.0.0.exe
+0adb02439d88fecd5da7473d8e23b57adae0848d7594bf9195c026c5ce2cfc25  Windows/Aurora-Signal-Windows-Portatile.zip

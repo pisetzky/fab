@@ -19,3 +19,6 @@ Apri `aurora/index.html` nel browser (o pubblicala con GitHub Pages). Non serve 
 Punteggio tecnico (trend vs EMA50, MACD, momentum 24h, RSI, posizione nel range 7 giorni), fattori della singola moneta (trend 30 giorni, liquidità, token ancora da sbloccare, distanza dal massimo storico, funding dei future, andamento di Bitcoin e dominanza BTC per le altcoin), combinati con l'indice di rischio mondiale. L'affidabilità scende con poca liquidità, molti sblocchi, nel weekend e quando mancano fonti. Obiettivo e data derivano dalla volatilità della moneta.
 
 **Non è consulenza finanziaria.** Le previsioni sono stime statistiche, non certezze.
+
+## Cartella di vendita
+La cartella `vendita/` contiene installer pronti per Mac (DMG), Windows (Setup.exe e portatile), Linux e la versione web. Si ricostruisce con `bash packaging/build.sh <versione>` (vedi `packaging/README.md`).

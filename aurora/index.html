@@ -21,7 +21,7 @@ body{min-height:100vh;overflow-x:hidden}
 .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
 
 /* ---------- Aurora sky ---------- */
-.sky{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;background:radial-gradient(120% 80% at 50% 120%,#0b1f3d 0%,var(--night) 60%)}
+.sky{position:fixed;top:0;right:0;bottom:0;left:0;z-index:0;pointer-events:none;overflow:hidden;background:radial-gradient(120% 80% at 50% 120%,#0b1f3d 0%,var(--night) 60%)}
 .band{position:absolute;width:140vw;height:55vh;left:-20vw;filter:blur(60px);opacity:.55;mix-blend-mode:screen;border-radius:50%}
 .b1{top:-12vh;background:linear-gradient(90deg,transparent,var(--a-green),var(--a-mint),transparent);animation:drift1 18s ease-in-out infinite alternate}
 .b2{top:2vh;background:linear-gradient(90deg,transparent,var(--a-teal),var(--a-violet),transparent);opacity:.4;animation:drift2 24s ease-in-out infinite alternate}
@@ -29,7 +29,7 @@ body{min-height:100vh;overflow-x:hidden}
 @keyframes drift1{from{transform:translateX(-8vw) skewY(-6deg) scaleY(.8)}to{transform:translateX(8vw) skewY(4deg) scaleY(1.1)}}
 @keyframes drift2{from{transform:translateX(10vw) skewY(5deg)}to{transform:translateX(-10vw) skewY(-5deg) scaleY(1.2)}}
 @keyframes drift3{from{transform:translateX(-4vw) rotate(-3deg)}to{transform:translateX(6vw) rotate(3deg)}}
-.stars{position:absolute;inset:0;background-image:radial-gradient(1px 1px at 20% 30%,#fff8,transparent),radial-gradient(1px 1px at 70% 20%,#fff6,transparent),radial-gradient(1px 1px at 40% 70%,#fff5,transparent),radial-gradient(1px 1px at 85% 60%,#fff7,transparent),radial-gradient(1px 1px at 10% 85%,#fff5,transparent),radial-gradient(1px 1px at 55% 45%,#fff4,transparent);background-size:400px 400px}
+.stars{position:absolute;top:0;right:0;bottom:0;left:0;background-image:radial-gradient(1px 1px at 20% 30%,#fff8,transparent),radial-gradient(1px 1px at 70% 20%,#fff6,transparent),radial-gradient(1px 1px at 40% 70%,#fff5,transparent),radial-gradient(1px 1px at 85% 60%,#fff7,transparent),radial-gradient(1px 1px at 10% 85%,#fff5,transparent),radial-gradient(1px 1px at 55% 45%,#fff4,transparent);background-size:400px 400px}
 @media (prefers-reduced-motion:reduce){.band{animation:none}}
 
 /* ---------- Layout ---------- */
@@ -40,7 +40,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 h1{margin:0;font-size:1.5rem;letter-spacing:.5px;background:linear-gradient(90deg,var(--a-green),var(--a-teal),var(--a-violet),var(--a-pink));-webkit-background-clip:text;background-clip:text;color:transparent}
 .sub{color:var(--mute);font-size:.82rem}
 .hbtns{display:flex;gap:8px;flex-wrap:wrap}
-button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--glass);color:var(--ice);padding:9px 14px;border-radius:12px;backdrop-filter:blur(10px);transition:.2s}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--glass);color:var(--ice);padding:9px 14px;border-radius:12px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:.2s}
 button:hover{border-color:var(--a-teal);box-shadow:0 0 18px #00d4ff33}
 button.primary{background:linear-gradient(90deg,#3dffa833,#00d4ff33,#9b6bff33);border-color:#3dffa866}
 button:disabled{opacity:.5;cursor:wait}
@@ -73,7 +73,7 @@ button:disabled{opacity:.5;cursor:wait}
 .f.loading .v{opacity:.35}
 
 /* Ticker */
-.ticker{overflow:hidden;white-space:nowrap;padding:10px 0;margin-bottom:16px;mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
+.ticker{overflow:hidden;white-space:nowrap;padding:10px 0;margin-bottom:16px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
 .ticker .run{display:inline-block;animation:tick 120s linear infinite;padding-left:100%}
 .ticker a{color:var(--ice);text-decoration:none;margin-right:42px;font-size:.85rem}
 .ticker a b{color:var(--a-teal);margin-right:6px;font-weight:600}
@@ -118,7 +118,7 @@ input:focus,select:focus{border-color:var(--a-teal)}
 .weak{position:absolute;top:10px;right:46px;font-size:.65rem;color:var(--warn)}
 
 /* Modal */
-.modal{position:fixed;inset:0;z-index:20;background:rgba(2,6,16,.75);backdrop-filter:blur(6px);display:none;align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto}
+.modal{position:fixed;top:0;right:0;bottom:0;left:0;z-index:20;background:rgba(2,6,16,.75);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:none;align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto}
 .modal.open{display:flex}
 .mbox{width:100%;max-width:860px;padding:20px}
 .mhead{display:flex;align-items:center;gap:12px;margin-bottom:12px}
@@ -613,7 +613,7 @@ async function runAI(){
   setSource('ai','wait','AI');
   const aiF = FACTORS.filter(f => f.q);   // solo i fattori basati su notizie
   const ids = aiF.map(f=>`${f.id} (${f.name})`).join(', ');
-  const tpl = JSON.stringify({scores:Object.fromEntries(aiF.map(f=>[f.id,0])), crypto_bias:'rialzista|ribassista|neutro'});
+  const tpl = JSON.stringify({scores:aiF.reduce((o,f)=>(o[f.id]=0,o),{}), crypto_bias:'rialzista|ribassista|neutro'});
   const prompt = `Oggi è ${new Date().toISOString().slice(0,10)}. Cerca sul web le notizie più recenti (ultime 24-48 ore) che possono influenzare i mercati e le criptovalute.
 Valuta il livello di rischio per i mercati da 0 (calmo, positivo) a 100 (rischio estremo) per ciascuna categoria: ${ids}.
 Rispondi in italiano con 4-6 frasi brevi che riassumono i fatti principali di oggi, poi in fondo un unico blocco JSON valido in questo formato esatto:
