@@ -201,10 +201,11 @@ details summary{cursor:pointer;color:var(--mute);font-size:.85rem}
       <div style="margin-top:12px">
         <div class="ai-row">
           <input type="password" id="aiKey" placeholder="Chiave API Anthropic (sk-ant-…)" autocomplete="off">
-          <label class="note"><input type="checkbox" id="aiAuto"> ripeti ogni 6 ore</label>
+          <label class="note"><input type="checkbox" id="aiAuto" checked> in automatico ogni 3 ore</label>
           <button id="aiRun" class="primary">Analizza ora</button>
         </div>
-        <p class="note">La chiave resta solo in questo browser e viene inviata solo ad api.anthropic.com. L'AI cerca sul web le notizie di oggi (guerre, petrolio, gas, grano, Nasdaq, scioperi, aerei, armi, medicina, acqua, meteo) e dà un punteggio di rischio per ognuna, che si somma ai dati automatici. Ogni analisi costa qualche centesimo sul tuo account Anthropic.</p>
+        <p class="note">La chiave resta solo in questo browser e viene inviata solo ad api.anthropic.com. L'AI cerca sul web le notizie di oggi (guerre, petrolio, gas, grano, Nasdaq, scioperi, aerei, armi, medicina, acqua, meteo) e dà un punteggio di rischio per ognuna, che si somma ai dati automatici. Con la chiave inserita la ricerca parte da sola ogni 3 ore (8 al giorno, qualche centesimo ciascuna sul tuo account Anthropic); se apri l'app dopo più di 3 ore, parte subito.</p>
+        <p class="note" id="aiNext" style="color:var(--a-teal)"></p>
         <div class="ai-out" id="aiOut"></div>
       </div>
     </details>
@@ -234,7 +235,7 @@ details summary{cursor:pointer;color:var(--mute);font-size:.85rem}
 
   <div class="card disclaimer">
     <b>Importante.</b> Aurora Signal calcola i segnali con formule statistiche (RSI, MACD, medie mobili, volatilità) e un indice di rischio costruito da notizie e mercati. Nessun sistema può prevedere il prezzo delle crypto: gli obiettivi di vendita e le date sono stime di probabilità, non promesse. Non è consulenza finanziaria. Non investire soldi che non puoi permetterti di perdere.
-    L'app si aggiorna da sola ogni 5 minuti (prezzi) e ogni 30 minuti (notizie mondiali) finché la pagina è aperta.
+    L'app si aggiorna da sola: prezzi ogni 5 minuti, notizie mondiali ogni 30 minuti, ricerca AI sul web ogni 3 ore. Funziona finché la pagina è aperta; quando la riapri, recupera subito le ricerche saltate.
   </div>
 </div>
 
@@ -246,7 +247,7 @@ details summary{cursor:pointer;color:var(--mute);font-size:.85rem}
 /* ================= Config ================= */
 const CG = 'https://api.coingecko.com/api/v3';
 const GDELT = 'https://api.gdeltproject.org/api/v2/doc/doc';
-const PRICE_MS = 5 * 60e3, WORLD_MS = 30 * 60e3, AI_MS = 6 * 3600e3;
+const PRICE_MS = 5 * 60e3, WORLD_MS = 30 * 60e3, AI_MS = 3 * 3600e3;   // ricerca AI sul web ogni 3 ore
 const STABLES = new Set(['usdt','usdc','dai','fdusd','tusd','usde','pyusd','usdd','busd','usds','usdp','gusd','frax','lusd','eurc','usd0','usdy','susde','usdtb','rlusd','usd1','bfusd','usdf','eurs','xaut','paxg','susds','buidl','usyc']);
 
 // Fattori monitorati: gruppo, peso nel rischio globale (normalizzato), query GDELT (se c'è)
@@ -499,6 +500,10 @@ async function fearGreed(){
 }
 
 async function refreshWorld(){
+  if (S.worldBusy) return; S.worldBusy = true;
+  try { await refreshWorldInner(); } finally { S.worldBusy = false; }
+}
+async function refreshWorldInner(){
   const R = S.risk, D = S.riskDetail;
   FACTORS.forEach(f => { if (R[f.id] == null) renderFactor(f.id, null, 'in attesa…', true); });
 
@@ -585,7 +590,22 @@ function computeRisk(){
 }
 
 /* ================= AI (Claude + web search) ================= */
+function aiDue(){
+  if (!$('#aiAuto').checked || !$('#aiKey').value.trim() || $('#aiRun').disabled) return false;
+  const last = Math.max(S.ai?.at || 0, load('aurora.aiTried', 0) + 20*60e3 - AI_MS); // dopo un errore riprova tra 20 min
+  return Date.now() - last >= AI_MS;
+}
+function nextAI(){ return S.ai?.at ? new Date(S.ai.at + AI_MS) : null; }
+function renderSchedule(){
+  const el = $('#aiNext'); if (!el) return;
+  if (!$('#aiKey').value.trim()) { el.textContent = 'Inserisci la chiave per attivare la ricerca automatica ogni 3 ore.'; return; }
+  if (!$('#aiAuto').checked) { el.textContent = 'Ricerca automatica disattivata.'; return; }
+  const n = nextAI();
+  el.textContent = n ? `Prossima ricerca AI automatica: ${n.toLocaleString('it-IT',{weekday:'short',hour:'2-digit',minute:'2-digit'})}` : 'Prima ricerca AI in corso o imminente.';
+}
+
 async function runAI(){
+  save('aurora.aiTried', Date.now());
   const key = $('#aiKey').value.trim();
   if (!key){ $('#aiOut').textContent = 'Inserisci la tua chiave API Anthropic.'; return; }
   try{ localStorage.setItem('aurora.aikey', key); }catch{}
@@ -631,7 +651,7 @@ ${tpl}`;
     renderAI(); setSource('ai','ok','AI'); computeRisk();
   }catch(e){
     $('#aiOut').textContent = 'Errore AI: ' + e.message; setSource('ai','ko','AI');
-  }finally{ $('#aiRun').disabled = false; }
+  }finally{ $('#aiRun').disabled = false; renderSchedule(); }
 }
 function renderAI(){
   if (!S.ai) return;
@@ -896,12 +916,13 @@ $('#btnNotify').addEventListener('click', async () => {
   $('#btnNotify').textContent = p === 'granted' ? '🔔 Avvisi attivi' : '🔕 Avvisi bloccati';
 });
 $('#aiRun').addEventListener('click', runAI);
-$('#aiAuto').addEventListener('change', e => save('aurora.aiAuto', e.target.checked));
+$('#aiAuto').addEventListener('change', e => { save('aurora.aiAuto', e.target.checked); renderSchedule(); });
+$('#aiKey').addEventListener('change', () => { try{ localStorage.setItem('aurora.aikey', $('#aiKey').value.trim()); }catch{} renderSchedule(); if (aiDue()) runAI(); });
 
 /* ================= Boot ================= */
 (async function boot(){
   try{ const k = localStorage.getItem('aurora.aikey'); if (k) $('#aiKey').value = k; }catch{}
-  $('#aiAuto').checked = load('aurora.aiAuto', false);
+  $('#aiAuto').checked = load('aurora.aiAuto', true);
   const ai = load('aurora.ai', null);
   if (ai && Date.now() - ai.at < 24*3600e3){ S.ai = ai; renderAI(); setSource('ai','ok','AI'); }
   if ('Notification' in window && Notification.permission === 'granted') $('#btnNotify').textContent = '🔔 Avvisi attivi';
@@ -909,11 +930,20 @@ $('#aiAuto').addEventListener('change', e => save('aurora.aiAuto', e.target.chec
 
   await refreshCoins();
   refreshWorld();
-  setInterval(refreshCoins, PRICE_MS);
-  setInterval(refreshWorld, WORLD_MS);
-  setInterval(() => {
-    if ($('#aiAuto').checked && $('#aiKey').value && (!S.ai || Date.now() - S.ai.at > AI_MS)) runAI();
-  }, 10 * 60e3);
+  // Pianificazione: controllo ogni minuto cosa è "scaduto". Così, anche se il browser rallenta
+  // i timer quando la scheda è in secondo piano o il telefono va in standby, al ritorno recupera subito.
+  S.lastPrice = Date.now(); S.lastWorld = Date.now();
+  const tick = () => {
+    const now = Date.now();
+    if (now - S.lastPrice >= PRICE_MS){ S.lastPrice = now; refreshCoins(); }
+    if (now - S.lastWorld >= WORLD_MS && !S.worldBusy){ S.lastWorld = now; refreshWorld(); }
+    if (aiDue()) runAI();
+    renderSchedule();
+  };
+  setInterval(tick, 60e3);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+  if (aiDue()) runAI();   // se all'apertura sono passate più di 3 ore, parte subito
+  renderSchedule();
 })();
 </script>
 </body>

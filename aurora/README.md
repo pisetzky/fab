@@ -13,7 +13,7 @@ Apri `aurora/index.html` nel browser (o pubblicala con GitHub Pages). Non serve 
 - Ciclo dell'halving di Bitcoin (tendenza storica)
 - Meteo estremo nelle aree chiave (Midwest USA, Ucraina, Brasile, Golfo del Messico, Suez, Nord Europa): Open-Meteo
 - Crypto Fear & Greed: alternative.me
-- Facoltativo: analisi AI con ricerca web (Claude, chiave API Anthropic personale)
+- Analisi AI con ricerca web (Claude, chiave API Anthropic personale): parte da sola ogni 3 ore, e subito all'apertura se sono passate più di 3 ore
 
 ## Come calcola il segnale
 Punteggio tecnico (trend vs EMA50, MACD, momentum 24h, RSI, posizione nel range 7 giorni), fattori della singola moneta (trend 30 giorni, liquidità, token ancora da sbloccare, distanza dal massimo storico, funding dei future, andamento di Bitcoin e dominanza BTC per le altcoin), combinati con l'indice di rischio mondiale. L'affidabilità scende con poca liquidità, molti sblocchi, nel weekend e quando mancano fonti. Obiettivo e data derivano dalla volatilità della moneta.
