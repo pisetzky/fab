@@ -50,6 +50,7 @@ button:disabled{opacity:.5;cursor:wait}
 
 /* Gauge */
 .gauge{padding:18px;display:flex;flex-direction:column;align-items:center;text-align:center}
+@media (min-width:861px){.gauge{position:sticky;top:16px;align-self:start}}
 .gauge h2,.sec h2{margin:0 0 6px;font-size:.8rem;text-transform:uppercase;letter-spacing:2px;color:var(--mute);font-weight:500}
 .gauge svg{width:100%;max-width:260px}
 .gval{font-size:2.6rem;font-weight:700;margin-top:-58px}
@@ -62,6 +63,8 @@ button:disabled{opacity:.5;cursor:wait}
 /* Factors */
 .sec{padding:16px}
 .factors{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:8px}
+.ghead{font-size:.78rem;font-weight:600;margin:14px 0 0;color:var(--a-teal)}
+.ghead:first-child{margin-top:4px}
 .f{padding:10px 12px;border-radius:12px;background:rgba(5,11,26,.45);border:1px solid var(--line);position:relative;overflow:hidden}
 .f .n{font-size:.78rem;color:var(--mute);display:flex;justify-content:space-between;gap:4px}
 .f .v{font-size:1.25rem;font-weight:700;margin-top:2px}
@@ -185,8 +188,8 @@ details summary{cursor:pointer;color:var(--mute);font-size:.85rem}
 
     <div class="card sec">
       <h2>Cosa sto monitorando</h2>
-      <div class="factors" id="factors"></div>
-      <p class="note" style="margin:10px 0 0">Ogni riquadro: 0 = calmo, 100 = rischio massimo. Fonti: tono delle notizie mondiali (GDELT), prezzi Nasdaq e materie prime (Stooq), meteo estremo nelle aree chiave per grano, petrolio e gas (Open‑Meteo), Fear &amp; Greed crypto, analisi AI facoltativa.</p>
+      <div id="factors"></div>
+      <p class="note" style="margin:10px 0 0">Ogni riquadro: 0 = calmo, 100 = rischio massimo. Fonti: tono delle notizie mondiali su 32 temi (GDELT), Nasdaq, S&amp;P 500, VIX, dollaro, rendimenti USA e materie prime (Stooq), mercato crypto globale (CoinGecko), leva sui future (Binance), meteo estremo nelle aree chiave (Open‑Meteo), Fear &amp; Greed, ciclo dell'halving, analisi AI facoltativa. I pesi si ribilanciano da soli se una fonte non risponde.</p>
     </div>
   </div>
 
@@ -246,23 +249,60 @@ const GDELT = 'https://api.gdeltproject.org/api/v2/doc/doc';
 const PRICE_MS = 5 * 60e3, WORLD_MS = 30 * 60e3, AI_MS = 6 * 3600e3;
 const STABLES = new Set(['usdt','usdc','dai','fdusd','tusd','usde','pyusd','usdd','busd','usds','usdp','gusd','frax','lusd','eurc','usd0','usdy','susde','usdtb','rlusd','usd1','bfusd','usdf','eurs','xaut','paxg','susds','buidl','usyc']);
 
-// Fattori monitorati: query GDELT, peso nel rischio globale
+// Fattori monitorati: gruppo, peso nel rischio globale (normalizzato), query GDELT (se c'è)
+const GROUPS = {
+  crypto:'₿ Mercato crypto', macro:'🏦 Economia e finanza', markets:'📊 Borse e materie prime',
+  geo:'🌍 Geopolitica e sicurezza', society:'🏭 Società e logistica', nature:'🌦️ Natura e salute'
+};
 const FACTORS = [
-  {id:'war',    name:'Guerre',          icon:'⚔️', w:.14, q:'(war OR airstrike OR invasion OR missile OR "military offensive")'},
-  {id:'nasdaq', name:'Borsa Nasdaq',    icon:'📈', w:.14, q:'(nasdaq OR "wall street" OR "stock market")'},
-  {id:'oil',    name:'Petrolio',        icon:'🛢️', w:.10, q:'("oil price" OR crude OR OPEC OR brent)'},
-  {id:'gas',    name:'Gas',             icon:'🔥', w:.08, q:'("natural gas" OR LNG OR "gas price" OR pipeline)'},
-  {id:'gold',   name:'Oro',             icon:'🥇', w:.05, q:'("gold price" OR bullion)'},
-  {id:'food',   name:'Grano e cibo',    icon:'🌾', w:.06, q:'(wheat OR grain OR "food prices" OR corn OR harvest)'},
-  {id:'weather',name:'Meteo estremo',   icon:'🌪️', w:.06, q:'(hurricane OR flood OR drought OR heatwave OR wildfire OR typhoon)'},
-  {id:'strike', name:'Scioperi',        icon:'✊', w:.05, q:'(strike OR walkout OR "labor protest" OR "general strike")'},
-  {id:'air',    name:'Aerei',           icon:'✈️', w:.04, q:'(airline OR airport OR "flight cancellations" OR aviation OR "plane crash")'},
-  {id:'arms',   name:'Armi',            icon:'🛡️', w:.07, q:'(weapons OR "arms deal" OR "defense spending" OR nuclear OR ammunition)'},
-  {id:'med',    name:'Medicina',        icon:'💊', w:.06, q:'(pandemic OR outbreak OR epidemic OR virus OR "drug shortage")'},
-  {id:'water',  name:'Acqua',           icon:'💧', w:.04, q:'("water shortage" OR "water crisis" OR dam OR "water supply")'},
-  {id:'crypto', name:'Notizie crypto',  icon:'₿',  w:.06, q:'(bitcoin OR crypto OR cryptocurrency OR ethereum)'},
-  {id:'fng',    name:'Fear & Greed',    icon:'😱', w:.05, q:null},
+  // --- Mercato crypto (dati diretti) ---
+  {id:'fng',      g:'crypto', name:'Fear & Greed',        icon:'😱', w:.05, q:null},
+  {id:'mktcap',   g:'crypto', name:'Capitalizz. totale',  icon:'🌐', w:.06, q:null},
+  {id:'breadth',  g:'crypto', name:'Ampiezza mercato',    icon:'📶', w:.06, q:null},
+  {id:'dominance',g:'crypto', name:'Dominanza BTC',       icon:'👑', w:.03, q:null},
+  {id:'leverage', g:'crypto', name:'Leva / funding',      icon:'⚖️', w:.05, q:null},
+  {id:'cycle',    g:'crypto', name:'Ciclo halving',       icon:'🔄', w:.03, q:null},
+  {id:'crypto',   g:'crypto', name:'Notizie crypto',      icon:'📰', w:.05, q:'(bitcoin OR crypto OR cryptocurrency OR ethereum)'},
+  {id:'regul',    g:'crypto', name:'Regole e SEC',        icon:'⚖️', w:.05, q:'crypto (SEC OR regulation OR ban OR lawsuit OR MiCA OR regulators)'},
+  {id:'hack',     g:'crypto', name:'Hack ed exploit',     icon:'🏴‍☠️', w:.04, q:'crypto (hack OR exploit OR stolen OR breach OR hacked)'},
+  {id:'etf',      g:'crypto', name:'ETF e istituzioni',   icon:'🏛️', w:.04, q:'("bitcoin ETF" OR "ether ETF" OR "crypto ETF" OR "ETF inflows" OR "ETF outflows")'},
+  // --- Economia e finanza ---
+  {id:'rates',    g:'macro', name:'Tassi e banche centr.',icon:'🏦', w:.07, q:'("Federal Reserve" OR "interest rates" OR ECB OR "rate hike" OR "rate cut" OR Powell)'},
+  {id:'inflation',g:'macro', name:'Inflazione',           icon:'💸', w:.05, q:'(inflation OR CPI OR "consumer prices")'},
+  {id:'dollar',   g:'macro', name:'Dollaro USA',          icon:'💵', w:.04, q:'("US dollar" OR "dollar index" OR DXY)'},
+  {id:'jobs',     g:'macro', name:'Lavoro e recessione',  icon:'👷', w:.04, q:'(unemployment OR layoffs OR recession OR "jobs report" OR payrolls)'},
+  {id:'banks',    g:'macro', name:'Banche e debito',      icon:'🧾', w:.04, q:'("bank collapse" OR "banking crisis" OR default OR "debt ceiling" OR "credit crunch")'},
+  {id:'tech',     g:'macro', name:'Tech, chip e AI',      icon:'💾', w:.03, q:'(semiconductor OR Nvidia OR chipmaker OR "AI stocks" OR "tech stocks")'},
+  // --- Borse e materie prime ---
+  {id:'nasdaq',   g:'markets', name:'Nasdaq / S&P 500',   icon:'📈', w:.09, q:'(nasdaq OR "wall street" OR "stock market" OR "S&P 500")'},
+  {id:'vix',      g:'markets', name:'Paura borse (VIX)',  icon:'📉', w:.05, q:null},
+  {id:'yields',   g:'markets', name:'Rendimenti bond',    icon:'📜', w:.04, q:'("treasury yields" OR "bond yields" OR "10-year yield")'},
+  {id:'oil',      g:'markets', name:'Petrolio',           icon:'🛢️', w:.06, q:'("oil price" OR crude OR OPEC OR brent)'},
+  {id:'gas',      g:'markets', name:'Gas',                icon:'🔥', w:.05, q:'("natural gas" OR LNG OR "gas price" OR pipeline)'},
+  {id:'gold',     g:'markets', name:'Oro e argento',      icon:'🥇', w:.03, q:'("gold price" OR bullion OR silver)'},
+  {id:'metals',   g:'markets', name:'Rame e metalli',     icon:'🔩', w:.02, q:'(copper OR lithium OR "rare earths" OR nickel)'},
+  {id:'food',     g:'markets', name:'Grano e cibo',       icon:'🌾', w:.04, q:'(wheat OR grain OR "food prices" OR corn OR harvest OR fertilizer)'},
+  {id:'power',    g:'markets', name:'Elettricità',        icon:'⚡', w:.02, q:'(blackout OR "power outage" OR "electricity prices" OR "energy crisis")'},
+  // --- Geopolitica e sicurezza ---
+  {id:'war',      g:'geo', name:'Guerre',                 icon:'⚔️', w:.09, q:'(war OR airstrike OR invasion OR missile OR "military offensive")'},
+  {id:'arms',     g:'geo', name:'Armi e nucleare',        icon:'🛡️', w:.05, q:'(weapons OR "arms deal" OR "defense spending" OR nuclear OR ammunition)'},
+  {id:'terror',   g:'geo', name:'Terrorismo',             icon:'🚨', w:.03, q:'(terrorist OR "terror attack" OR bombing OR hostage)'},
+  {id:'trade',    g:'geo', name:'Dazi e sanzioni',        icon:'🚧', w:.05, q:'(tariffs OR sanctions OR "trade war" OR embargo OR "export ban")'},
+  {id:'politics', g:'geo', name:'Elezioni e politica',    icon:'🗳️', w:.04, q:'(election OR coup OR impeachment OR "government shutdown" OR "political crisis")'},
+  {id:'china',    g:'geo', name:'Cina e Taiwan',          icon:'🐉', w:.04, q:'China (Taiwan OR economy OR stimulus OR yuan OR Beijing)'},
+  {id:'cyber',    g:'geo', name:'Attacchi informatici',   icon:'💻', w:.03, q:'(cyberattack OR ransomware OR "data breach" OR hackers)'},
+  // --- Società e logistica ---
+  {id:'strike',   g:'society', name:'Scioperi e proteste',icon:'✊', w:.03, q:'(strike OR walkout OR "labor protest" OR "general strike" OR riots)'},
+  {id:'air',      g:'society', name:'Aerei',              icon:'✈️', w:.02, q:'(airline OR airport OR "flight cancellations" OR aviation OR "plane crash")'},
+  {id:'shipping', g:'society', name:'Navi e trasporti',   icon:'🚢', w:.03, q:'(shipping OR "Suez Canal" OR "Red Sea" OR "supply chain" OR port OR freight)'},
+  // --- Natura e salute ---
+  {id:'weather',  g:'nature', name:'Meteo estremo',       icon:'🌪️', w:.04, q:'(hurricane OR flood OR drought OR heatwave OR wildfire OR typhoon)'},
+  {id:'quake',    g:'nature', name:'Terremoti e vulcani', icon:'🌋', w:.02, q:'(earthquake OR tsunami OR volcano OR eruption)'},
+  {id:'med',      g:'nature', name:'Medicina e epidemie', icon:'💊', w:.04, q:'(pandemic OR outbreak OR epidemic OR virus OR "drug shortage")'},
+  {id:'water',    g:'nature', name:'Acqua',               icon:'💧', w:.02, q:'("water shortage" OR "water crisis" OR dam OR "water supply")'},
 ];
+const SYM_LABEL = {'^ndq':'Nasdaq','^spx':'S&P','dx.f':'DXY','10usy.b':'10Y','cl.f':'WTI','ng.f':'Gas','gc.f':'Oro','si.f':'Argento','hg.f':'Rame','zw.f':'Grano','zc.f':'Mais'};
+const HALVING =Date.UTC(2024,3,20); // ultimo halving di Bitcoin
 
 /* ================= State ================= */
 const S = {
@@ -303,7 +343,7 @@ function rsi(p, n=14){
 }
 function std(a){ const m = a.reduce((s,x)=>s+x,0)/a.length; return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/a.length); }
 
-function analyze(c, risk){
+function analyze(c, risk, ctx = {}){
   const p = (c.sparkline_in_7d?.price || []).filter(x => x > 0);
   const sym = (c.symbol||'').toLowerCase();
   const isStable = STABLES.has(sym) || (p.length > 20 && Math.abs(c.current_price - 1) < .02 && std(p)/c.current_price < .004);
@@ -327,21 +367,42 @@ function analyze(c, risk){
   const sRange = (.5 - rangePos) * .6;
   const tech = .25*sTrend + .25*sMACD + .2*sMom + .2*sRSI + .1*sRange;
 
+  // --- Fattori specifici della moneta ---
+  const isBTC = sym === 'btc';
+  const ch30 = (c.price_change_percentage_30d_in_currency ?? 0) / 100;
+  const s30 = Math.tanh(ch30 / (volD * Math.sqrt(30)));                       // trend del mese
+  const liq = c.market_cap ? (c.total_volume || 0) / c.market_cap : 0;        // scambi / capitalizzazione
+  const sLiq = liq < .01 ? -.4 : liq < .03 ? -.15 : liq > .5 ? -.2 : .05;     // illiquida o pompata = rischio
+  const dil = c.total_supply ? (c.circulating_supply || 0) / c.total_supply : (c.max_supply ? (c.circulating_supply||0)/c.max_supply : 1);
+  const sDil = dil < .3 ? -.5 : dil < .6 ? -.2 : 0;                           // tanti token ancora da sbloccare
+  const ath = (c.ath_change_percentage ?? -50) / 100;                          // es. -0.4 = 40% sotto il massimo
+  const sAth = ath > -.05 ? -.25 : ath < -.9 ? -.2 : 0;                        // vicino al massimo = resistenza; -90% = moneta in crisi
+  const f = ctx.funding?.[sym.toUpperCase() + 'USDT'];
+  const sFund = f == null ? 0 : -Math.tanh((f*1e4 - 1) / 3);                   // funding molto positivo = troppi long a leva
+  const sBTC = isBTC ? 0 : (ctx.btcTech ?? 0);                                 // le altcoin seguono BTC
+  const sDom = isBTC ? 0 : (ctx.domTrend ?? 0);                                // dominanza BTC in salita = altcoin deboli
+  const coin = .3*s30 + .2*sLiq + .15*sDil + .1*sAth + .25*sFund;
+  const techAll = clamp(.65*tech + .2*coin + (isBTC ? .15*tech : .1*sBTC + .05*sDom), -1, 1);
+
   const macro = clamp((50 - risk)/50, -1, 1);           // rischio mondo alto = vendi
   const betaW = clamp(.25 + volD*4, .25, .45);          // le monete più volatili soffrono di più il rischio
-  const score = clamp((1-betaW)*tech + betaW*macro, -1, 1);
+  const score = clamp((1-betaW)*techAll + betaW*macro, -1, 1);
   const a = Math.abs(score);
   const buy = score >= 0;
   const horizon = Math.round(clamp(3 + 12*(1-a), 2, 21));
+  const liqWiden = liq < .02 ? 1.3 : 1;                 // poca liquidità = oscillazioni più ampie
   const move = Math.max(.015, volD * Math.sqrt(horizon) * (.55 + a));
-  const stop = Math.max(.01, volD * Math.sqrt(horizon) * .8);
+  const stop = Math.max(.01, volD * Math.sqrt(horizon) * .8 * liqWiden);
   const date = new Date(Date.now() + horizon*864e5);
+  // affidabilità: più bassa se poca liquidità, molti token da sbloccare o weekend (meno volumi)
+  const wk = [0,6].includes(new Date().getDay());
+  const conf = Math.round(clamp(50 + a*100 - (liq < .01 ? 8 : 0) - (dil < .3 ? 5 : 0) - (wk ? 3 : 0) - (ctx.coverage != null ? (1-ctx.coverage)*10 : 0), 51, 95));
   return {
-    stable:false, score, buy, conf: Math.round(clamp(50 + a*100, 51, 97)), weak: a < .1,
+    stable:false, score, buy, conf, weak: a < .1,
     horizon, move, stop, date, target: buy ? last*(1+move) : last*(1-move),
     stopPrice: buy ? last*(1-stop) : last*(1+stop),
-    R, hist, trend, mom24, volD, rangePos, tech, macro,
-    parts: {sTrend, sMACD, sMom, sRSI, sRange}, p, e12, e50
+    R, hist, trend, mom24, volD, rangePos, tech, macro, ch30, liq, dil, ath, f, wk,
+    parts: {sTrend, sMACD, sMom, sRSI, sRange, s30, sLiq, sDil, sAth, sFund, sBTC, sDom}, p, e12, e50
   };
 }
 
@@ -368,7 +429,9 @@ async function gdeltHeadlines(){
 
 async function stooqQuotes(){
   // Nasdaq, petrolio, gas, oro, grano — chiusura vs apertura di oggi
-  const url = 'https://stooq.com/q/l/?s=%5Endq+cl.f+ng.f+gc.f+zw.f&f=sd2t2ohlc&h&e=csv';
+  // Nasdaq, S&P500, VIX, dollar index, US 10Y, petrolio, gas, oro, argento, rame, grano, mais
+  const syms = ['^ndq','^spx','^vix','dx.f','10usy.b','cl.f','ng.f','gc.f','si.f','hg.f','zw.f','zc.f'];
+  const url = 'https://stooq.com/q/l/?s=' + syms.map(encodeURIComponent).join('+') + '&f=sd2t2ohlc&h&e=csv';
   const txt = await (await fetch(url)).text();
   const out = {};
   txt.trim().split('\n').slice(1).forEach(line => {
@@ -399,6 +462,36 @@ async function weatherRisk(){
   return {risk: clamp(score/ (j.length*3*1.2) * 100 + 15, 0, 100), hits};
 }
 
+async function cryptoGlobal(){
+  const j = (await getJSON(`${CG}/global`)).data;
+  const dom = j.market_cap_percentage?.btc;
+  const prev = load('aurora.dom', null);
+  // confronta con il valore salvato almeno 6 ore fa
+  let trend = 0;
+  if (prev && Date.now() - prev.at > 6*3600e3){ trend = dom - prev.v; save('aurora.dom', {v:dom, at:Date.now(), trend}); }
+  else if (prev){ trend = prev.trend ?? 0; } else save('aurora.dom', {v:dom, at:Date.now(), trend:0});
+  return {chg: j.market_cap_change_percentage_24h_usd, dom, trend};
+}
+
+async function fundingRates(){
+  // Funding dei future perpetui: positivo = più gente a leva al rialzo
+  const j = await getJSON('https://fapi.binance.com/fapi/v1/premiumIndex');
+  const m = {}; j.forEach(x => { m[x.symbol] = parseFloat(x.lastFundingRate); });
+  return m;
+}
+
+function cycleRisk(){
+  // Fasi storiche dopo l'halving (2012, 2016, 2020, 2024). Solo una tendenza statistica.
+  const months = (Date.now() - HALVING) / (30.44*864e5);
+  let r, phase;
+  if (months < 12){ r = 35; phase = 'fase di crescita'; }
+  else if (months < 18){ r = 50; phase = 'zona dei massimi storici'; }
+  else if (months < 30){ r = 68; phase = 'fase ribassista storica'; }
+  else if (months < 42){ r = 48; phase = 'accumulo / ripresa'; }
+  else { r = 40; phase = 'pre‑halving'; }
+  return {risk:r, note:`${Math.round(months)} mesi dall'halving · ${phase}`};
+}
+
 async function fearGreed(){
   const j = await getJSON('https://api.alternative.me/fng/?limit=2');
   const v = +j.data[0].value;
@@ -417,8 +510,19 @@ async function refreshWorld(){
       .catch(() => setSource('meteo','ko','Meteo')),
     stooqQuotes().then(q => { S.world = q; setSource('stooq','ok','Borse/materie prime'); })
       .catch(() => { S.world = null; setSource('stooq','ko','Borse/materie prime'); }),
+    cryptoGlobal().then(g => {
+      R.mktcap = clamp(50 - g.chg*8, 0, 100); D.mktcap = `${fmtPct(g.chg,2)} in 24h`;
+      S.domTrend = clamp(-g.trend/2, -1, 1);
+      R.dominance = clamp(50 + g.trend*15, 0, 100); D.dominance = `${g.dom.toFixed(1)}% ${g.trend>0?'↗ in salita (altcoin deboli)':g.trend<0?'↘ in calo (altcoin forti)':''}`;
+    }).catch(() => {}),
+    fundingRates().then(fm => {
+      S.funding = fm; setSource('fund','ok','Funding');
+      const avg = ['BTCUSDT','ETHUSDT','SOLUSDT'].map(s=>fm[s]).filter(x=>x!=null);
+      if (avg.length){ const f = avg.reduce((s,x)=>s+x,0)/avg.length; R.leverage = clamp(45 + (f*1e4 - 1)*12, 0, 100); D.leverage = `funding medio ${(f*100).toFixed(4)}% ${f*1e4>2?'· troppa leva long':f<0?'· prevalgono gli short':''}`; }
+    }).catch(() => setSource('fund','ko','Funding')),
     gdeltHeadlines().then(renderTicker).catch(() => {}),
   ];
+  const cy = cycleRisk(); R.cycle = cy.risk; D.cycle = cy.note;
   await Promise.all(fast);
   computeRisk();
 
@@ -444,18 +548,29 @@ async function refreshWorld(){
 function computeRisk(){
   const R = S.risk, D = S.riskDetail, W = S.world, ai = S.ai?.scores || {};
   const out = {}, detail = {};
-  const mkt = {nasdaq:'^ndq', oil:'cl.f', gas:'ng.f', gold:'gc.f', food:'zw.f'};
+  // Mercati: simbolo Stooq → come la variazione di oggi diventa rischio (0-100)
+  const mkt = {
+    nasdaq: [['^ndq', c => 50 - c*15], ['^spx', c => 50 - c*15]],   // borse giù = rischio
+    dollar: [['dx.f', c => 50 + c*20]],                              // dollaro forte = crypto deboli
+    yields: [['10usy.b', c => 50 + c*5]],                            // rendimenti su = denaro più caro
+    oil:    [['cl.f', c => 45 + c*6]],
+    gas:    [['ng.f', c => 45 + c*4]],
+    gold:   [['gc.f', c => 45 + c*10], ['si.f', c => 45 + c*5]],     // corsa ai beni rifugio = paura
+    metals: [['hg.f', c => 50 - c*8]],                               // rame giù = timori di recessione
+    food:   [['zw.f', c => 45 + c*6], ['zc.f', c => 45 + c*6]],
+  };
+  const direct = ['fng','mktcap','dominance','leverage','cycle','breadth'];
   for (const f of FACTORS){
     const parts = []; const notes = [];
+    if (direct.includes(f.id) && R[f.id] != null){ parts.push(R[f.id]); notes.push(D[f.id]); }
     if (R['news_'+f.id] != null){ parts.push(R['news_'+f.id]); notes.push(D['news_'+f.id]); }
-    if (f.id === 'fng' && R.fng != null){ parts.push(R.fng); notes.push(D.fng); }
     if (f.id === 'weather' && R.weatherObs != null){ parts.push(R.weatherObs); notes.push(D.weatherObs); }
-    if (W && mkt[f.id] && W[mkt[f.id]]){
-      const q = W[mkt[f.id]]; let r;
-      // Nasdaq giù = rischio; petrolio/gas/grano/oro in forte rialzo = stress
-      if (f.id === 'nasdaq') r = clamp(50 - q.chg*15, 0, 100);
-      else r = clamp(45 + q.chg*(f.id==='gold'?10:6), 0, 100);
-      parts.push(r); notes.unshift(`${fmtPct(q.chg,2)} oggi`);
+    if (f.id === 'vix' && W?.['^vix']){ const v = W['^vix'].price; parts.push(clamp((v-12)*4, 0, 100)); notes.push(`VIX ${v.toFixed(1)}`); }
+    if (W && mkt[f.id]){
+      for (const [sym, fn] of mkt[f.id]){
+        const q = W[sym]; if (!q) continue;
+        parts.push(clamp(fn(q.chg), 0, 100)); notes.unshift(`${SYM_LABEL[sym] || sym} ${fmtPct(q.chg,2)}`);
+      }
     }
     if (ai[f.id] != null){ parts.push(ai[f.id]); notes.push('AI: ' + ai[f.id]); }
     if (parts.length){ out[f.id] = parts.reduce((s,x)=>s+x,0)/parts.length; detail[f.id] = notes.filter(Boolean).join(' · '); }
@@ -464,8 +579,8 @@ function computeRisk(){
   let sw = 0, sv = 0;
   for (const f of FACTORS) if (out[f.id] != null){ sw += f.w; sv += f.w*out[f.id]; }
   const total = sw ? sv/sw : 50;
-  S.globalRisk = total;
-  renderGauge(total, sw);
+  S.globalRisk = total; S.coverage = sw / FACTORS.reduce((s,f)=>s+f.w,0);
+  renderGauge(total, S.coverage);
   recomputeSignals();
 }
 
@@ -476,11 +591,13 @@ async function runAI(){
   try{ localStorage.setItem('aurora.aikey', key); }catch{}
   $('#aiRun').disabled = true; $('#aiOut').textContent = 'L\'AI sta cercando le notizie di oggi sul web… (30–90 secondi)';
   setSource('ai','wait','AI');
-  const ids = FACTORS.filter(f=>f.id!=='fng').map(f=>`${f.id} (${f.name})`).join(', ');
+  const aiF = FACTORS.filter(f => f.q);   // solo i fattori basati su notizie
+  const ids = aiF.map(f=>`${f.id} (${f.name})`).join(', ');
+  const tpl = JSON.stringify({scores:Object.fromEntries(aiF.map(f=>[f.id,0])), crypto_bias:'rialzista|ribassista|neutro'});
   const prompt = `Oggi è ${new Date().toISOString().slice(0,10)}. Cerca sul web le notizie più recenti (ultime 24-48 ore) che possono influenzare i mercati e le criptovalute.
 Valuta il livello di rischio per i mercati da 0 (calmo, positivo) a 100 (rischio estremo) per ciascuna categoria: ${ids}.
 Rispondi in italiano con 4-6 frasi brevi che riassumono i fatti principali di oggi, poi in fondo un unico blocco JSON valido in questo formato esatto:
-{"scores":{"war":0,"nasdaq":0,"oil":0,"gas":0,"gold":0,"food":0,"weather":0,"strike":0,"air":0,"arms":0,"med":0,"water":0,"crypto":0},"crypto_bias":"rialzista|ribassista|neutro"}`;
+${tpl}`;
   try{
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',
@@ -496,7 +613,7 @@ Rispondi in italiano con 4-6 frasi brevi che riassumono i fatti principali di og
         max_tokens:16000,
         output_config:{effort:'low'},
         fallbacks:'default',
-        tools:[{type:'web_search_20260209', name:'web_search', max_uses:8}],
+        tools:[{type:'web_search_20260209', name:'web_search', max_uses:12}],
         messages:[{role:'user', content:prompt}]
       })
     });
@@ -529,7 +646,7 @@ async function refreshCoins(){
     let all = [];
     for (const pg of pages){
       const per = S.count > 100 ? 100 : S.count;
-      const data = await getJSON(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${per}&page=${pg}&sparkline=true&price_change_percentage=1h,24h,7d`);
+      const data = await getJSON(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${per}&page=${pg}&sparkline=true&price_change_percentage=1h,24h,7d,30d`);
       all = all.concat(data);
       if (pages.length > 1) await sleep(1200);
     }
@@ -546,7 +663,20 @@ async function refreshCoins(){
 
 function recomputeSignals(){
   const risk = S.globalRisk ?? 50;
-  S.coins.forEach(c => { c.a = analyze(c, risk); });
+  const ctx = {funding: S.funding, domTrend: S.domTrend, coverage: S.coverage};
+  const btc = S.coins.find(c => c.symbol === 'btc');
+  if (btc){ const b = analyze(btc, risk, ctx); ctx.btcTech = b.stable ? 0 : b.tech; }
+  S.coins.forEach(c => { c.a = analyze(c, risk, ctx); });
+  // Ampiezza: quante monete stanno sopra la loro media mobile
+  const act = S.coins.filter(c => c.a && !c.a.stable);
+  if (act.length > 4){
+    const up = act.filter(c => c.a.trend > 0).length / act.length;
+    const nb = clamp(100 - up*100, 0, 100);
+    if (S.risk.breadth == null || Math.abs(S.risk.breadth - nb) > .5){
+      S.risk.breadth = nb; S.riskDetail.breadth = `${Math.round(up*100)}% delle monete in trend positivo`;
+      computeRisk(); return;
+    }
+  }
   checkFlips();
   renderCoins();
 }
@@ -578,7 +708,13 @@ function renderFactor(id, v, note, loading){
   if (!el){
     el = document.createElement('div'); el.className = 'f'; el.id = 'f-'+id;
     el.innerHTML = `<div class="n"><span>${f.icon} ${f.name}</span><span class="lv"></span></div><div class="v mono">--</div><div class="d"></div><div class="bar"></div>`;
-    $('#factors').appendChild(el);
+    let grp = document.getElementById('g-'+f.g);
+    if (!grp){
+      const h = document.createElement('div'); h.className = 'ghead'; h.textContent = GROUPS[f.g];
+      grp = document.createElement('div'); grp.className = 'factors'; grp.id = 'g-'+f.g;
+      $('#factors').append(h, grp);
+    }
+    grp.appendChild(el);
   }
   el.classList.toggle('loading', !!loading);
   el.querySelector('.v').textContent = v == null ? '--' : Math.round(v);
@@ -668,7 +804,14 @@ function openCoin(id){
   reasons.push(a.R < 30 ? `RSI ${a.R.toFixed(0)}: ipervenduta, spesso rimbalza` : a.R > 70 ? `RSI ${a.R.toFixed(0)}: ipercomprata, rischio di correzione` : `RSI ${a.R.toFixed(0)}: zona neutra`);
   reasons.push(a.hist > 0 ? 'MACD sopra la linea di segnale: slancio in aumento' : 'MACD sotto la linea di segnale: slancio in calo');
   reasons.push(a.trend > 0 ? `Prezzo ${fmtPct(a.trend*100)} sopra la media mobile: trend positivo` : `Prezzo ${fmtPct(a.trend*100)} sotto la media mobile: trend negativo`);
-  reasons.push(`Ultime 24 ore: ${fmtPct(a.mom24*100)}`);
+  reasons.push(`Ultime 24 ore: ${fmtPct(a.mom24*100)} · ultimi 30 giorni: ${fmtPct(a.ch30*100)}`);
+  reasons.push(a.liq < .01 ? `Liquidità bassa (scambi ${(a.liq*100).toFixed(1)}% della capitalizzazione): prezzi facili da muovere, affidabilità ridotta` : a.liq > .5 ? `Scambi anomali (${(a.liq*100).toFixed(0)}% della capitalizzazione): possibile speculazione` : `Liquidità buona (scambi ${(a.liq*100).toFixed(1)}% della capitalizzazione)`);
+  if (a.dil < .6) reasons.push(`Solo il ${(a.dil*100).toFixed(0)}% dei token è in circolazione: futuri sblocchi possono spingere il prezzo giù`);
+  reasons.push(a.ath > -.05 ? 'Vicina al massimo storico: zona di possibile resistenza' : `${fmtPct(a.ath*100,0)} dal massimo storico`);
+  if (a.f != null) reasons.push(`Funding future ${(a.f*100).toFixed(4)}%: ${a.f*1e4 > 2 ? 'troppi acquisti a leva, rischio di liquidazioni' : a.f < 0 ? 'prevalgono le scommesse al ribasso (possibile rimbalzo)' : 'leva nella norma'}`);
+  if (c.symbol !== 'btc') reasons.push(`Bitcoin ${P.sBTC >= 0 ? 'in salute: aiuta' : 'debole: frena'} le altcoin${P.sDom ? (P.sDom > 0 ? ' · dominanza BTC in calo (favorevole)' : ' · dominanza BTC in salita (sfavorevole)') : ''}`);
+  if (a.wk) reasons.push('Weekend: volumi più bassi, affidabilità leggermente ridotta');
+  reasons.push(`Ciclo halving: ${S.riskDetail.cycle || '–'}`);
   reasons.push(`Rischio mondo ${Math.round(S.globalRisk ?? 50)}/100 (${riskLabel(S.globalRisk ?? 50)}): ${a.macro >= 0 ? 'aiuta' : 'frena'} le crypto`);
   const top = FACTORS.map(f => ({f, v: +($('#f-'+f.id+' .v')?.textContent)})).filter(x=>isFinite(x.v)).sort((x,y)=>y.v-x.v).slice(0,3);
   if (top.length) reasons.push('Fattori più caldi ora: ' + top.map(x=>`${x.f.icon} ${x.f.name} ${x.v}`).join(', '));
@@ -688,7 +831,7 @@ function openCoin(id){
       <div><span>Volatilità giornaliera</span><b class="mono">${(a.volD*100).toFixed(1)}%</b></div>
     </div>
     <div class="kv">
-      ${meter('Trend', P.sTrend)}${meter('Slancio MACD', P.sMACD)}${meter('Momentum 24h', P.sMom)}${meter('RSI (contrarian)', P.sRSI)}${meter('Rischio mondo', a.macro)}${meter('Punteggio finale', a.score)}
+      ${meter('Trend', P.sTrend)}${meter('Slancio MACD', P.sMACD)}${meter('Momentum 24h', P.sMom)}${meter('RSI (contrarian)', P.sRSI)}${meter('Trend 30 giorni', P.s30)}${meter('Liquidità', P.sLiq)}${meter('Sblocchi token', P.sDil)}${meter('Leva / funding', P.sFund)}${c.symbol!=='btc'?meter('Effetto Bitcoin', P.sBTC):''}${meter('Rischio mondo', a.macro)}${meter('Punteggio finale', a.score)}
     </div>
     <h2 style="font-size:.8rem;letter-spacing:2px;text-transform:uppercase;color:var(--mute);font-weight:500">Perché</h2>
     <ul class="why">${reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>

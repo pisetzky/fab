@@ -6,14 +6,16 @@ App web (un solo file, `index.html`) che dà per ogni criptovaluta un segnale **
 Apri `aurora/index.html` nel browser (o pubblicala con GitHub Pages). Non serve installare niente.
 
 ## Fonti controllate in automatico
-- Prezzi crypto (top 100/250): CoinGecko, ogni 5 minuti
-- Nasdaq, petrolio, gas, oro, grano: Stooq
-- Tono delle notizie mondiali su guerre, scioperi, aerei, armi, medicina, acqua, petrolio, gas, cibo, meteo, Nasdaq, crypto: GDELT, ogni 30 minuti
+- Prezzi crypto (top 100/250), capitalizzazione totale, dominanza BTC: CoinGecko, ogni 5 minuti
+- Leva sui future (funding rate): Binance
+- Nasdaq, S&P 500, VIX, dollaro (DXY), rendimento USA 10 anni, petrolio, gas, oro, argento, rame, grano, mais: Stooq
+- Tono delle notizie mondiali su 32 temi, ogni 30 minuti (GDELT): crypto, regolamentazione, hack, ETF, tassi e banche centrali, inflazione, dollaro, lavoro e recessione, banche e debito, tech e chip, borse, rendimenti, petrolio, gas, oro, metalli, cibo, elettricità, guerre, armi e nucleare, terrorismo, dazi e sanzioni, elezioni, Cina e Taiwan, cyberattacchi, scioperi, aerei, navi e trasporti, meteo, terremoti, epidemie, acqua
+- Ciclo dell'halving di Bitcoin (tendenza storica)
 - Meteo estremo nelle aree chiave (Midwest USA, Ucraina, Brasile, Golfo del Messico, Suez, Nord Europa): Open-Meteo
 - Crypto Fear & Greed: alternative.me
 - Facoltativo: analisi AI con ricerca web (Claude, chiave API Anthropic personale)
 
 ## Come calcola il segnale
-Punteggio tecnico (trend vs EMA50, MACD, momentum 24h, RSI, posizione nel range 7 giorni) combinato con l'indice di rischio mondiale. Obiettivo e data derivano dalla volatilità della moneta.
+Punteggio tecnico (trend vs EMA50, MACD, momentum 24h, RSI, posizione nel range 7 giorni), fattori della singola moneta (trend 30 giorni, liquidità, token ancora da sbloccare, distanza dal massimo storico, funding dei future, andamento di Bitcoin e dominanza BTC per le altcoin), combinati con l'indice di rischio mondiale. L'affidabilità scende con poca liquidità, molti sblocchi, nel weekend e quando mancano fonti. Obiettivo e data derivano dalla volatilità della moneta.
 
 **Non è consulenza finanziaria.** Le previsioni sono stime statistiche, non certezze.
