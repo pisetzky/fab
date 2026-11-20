@@ -25,7 +25,7 @@ jobs:
       - name: Build VST3 + AU + Standalone + ChordPilot MIDI (universal Intel/Apple Silicon)
         working-directory: Desktop
         run: |
-          cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
           cmake --build build --config Release --target ChordPilot_VST3 ChordPilot_AU ChordPilot_Standalone ChordPilotMIDI_VST3 ChordPilotMIDI_AU ChordPilotEngineTests -- -quiet
           ./build/Release/ChordPilotEngineTests
       - name: Sign plug-ins and app (optional)
@@ -61,6 +61,7 @@ jobs:
             test -d "$f" && echo "OK $f"; codesign --verify --deep "$f"
           done
           file /Applications/ChordPilot.app/Contents/MacOS/ChordPilot
+          vtool -show-build /Applications/ChordPilot.app/Contents/MacOS/ChordPilot | grep -E "minos|version" || otool -l /Applications/ChordPilot.app/Contents/MacOS/ChordPilot | grep -A3 LC_VERSION_MIN
           auval -v aumu Chpd FabA || true
       - name: Notarize (optional)
         if: env.APPLE_ID != ''
@@ -71,6 +72,33 @@ jobs:
           done
       - uses: actions/upload-artifact@v4
         with: { name: mac, path: out }
+
+  mac-compat:
+    # Installs the DMG exactly like a customer on several macOS versions (older and newer) and launches the app.
+    needs: mac
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: mac, path: out }
+      - name: Mount, install, launch on ${{ matrix.os }}
+        run: |
+          sw_vers; uname -m
+          hdiutil verify out/ChordPilot-Mac.dmg
+          hdiutil attach out/ChordPilot-Mac.dmg -nobrowse -mountpoint /tmp/cpdmg
+          sudo installer -pkg "/tmp/cpdmg/Installa ChordPilot.pkg" -target /
+          hdiutil detach /tmp/cpdmg
+          for f in "/Applications/ChordPilot.app" "/Library/Audio/Plug-Ins/VST3/ChordPilot.vst3" "/Library/Audio/Plug-Ins/VST3/ChordPilot MIDI.vst3" "/Library/Audio/Plug-Ins/Components/ChordPilot.component" "/Library/Audio/Plug-Ins/Components/ChordPilot MIDI.component"; do
+            test -d "$f" || { echo "MISSING $f"; exit 1; }; codesign --verify --deep "$f"; echo "OK $f"
+          done
+          /Applications/ChordPilot.app/Contents/MacOS/ChordPilot & PID=$!
+          sleep 12
+          if kill -0 $PID 2>/dev/null; then echo "App avviata correttamente"; kill $PID; else echo "App terminata subito"; exit 1; fi
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          auval -v aumu Chpd FabA | tail -5 || true
 
   windows:
     runs-on: windows-latest

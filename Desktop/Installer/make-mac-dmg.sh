@@ -19,7 +19,7 @@ echo "Fatto: ChordPilot è stato rimosso."
 UNINSTALL
 chmod +x "$STAGE/Disinstalla ChordPilot.command"
 cat > "$STAGE/LEGGIMI.txt" <<'TXT'
-ChordPilot per Mac (Intel e Apple Silicon, macOS 10.15 o successivo)
+ChordPilot per Mac (Intel e Apple Silicon, macOS 10.13 o successivo)
 
 1. Doppio clic su "Installa ChordPilot".
 2. Premi Continua → Installa (inserisci la password del Mac quando richiesta).

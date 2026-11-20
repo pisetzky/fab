@@ -35,6 +35,7 @@ cat > "$WORK/distribution.xml" <<XML
   <license file="license.txt" mime-type="text/plain"/>
   <options customize="allow" require-scripts="false" hostArchitectures="x86_64,arm64"/>
   <domains enable_localSystem="true"/>
+  <allowed-os-versions><os-version min="10.13"/></allowed-os-versions>
   <choices-outline>
     <line choice="vst3"/><line choice="au"/><line choice="app"/>
   </choices-outline>

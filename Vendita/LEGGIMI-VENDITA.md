@@ -9,7 +9,7 @@ La cartella **ChordPilot-1.0-Download** (o i singoli file):
 
 | Sistema | File | Cosa fa il cliente |
 |---|---|---|
-| Mac (Intel + Apple Silicon, macOS 10.15+) | `ChordPilot-Mac.dmg` | apre il dmg → doppio clic su **Installa ChordPilot** → Continua → Installa |
+| Mac (Intel + Apple Silicon, macOS 10.13+) | `ChordPilot-Mac.dmg` | apre il dmg → doppio clic su **Installa ChordPilot** → Continua → Installa |
 | Windows 10/11 64 bit | `ChordPilot-Windows-Setup.exe` | doppio clic → Avanti → Installa |
 | Linux x86-64 | `Linux/` + `Installa-Linux.sh` | doppio clic sullo script |
 

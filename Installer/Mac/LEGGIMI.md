@@ -1,4 +1,4 @@
-# ChordPilot su Mac (Intel e Apple Silicon, macOS 10.15 o successivo)
+# ChordPilot su Mac (Intel e Apple Silicon, macOS 10.13 o successivo)
 
 ## Installazione consigliata: `ChordPilot-Mac.dmg`
 1. Apri **ChordPilot-Mac.dmg**.

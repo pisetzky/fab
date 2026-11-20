@@ -9,7 +9,7 @@ e ogni tasto diventa un accordo da hit. Premi "Nuova canzone" per un brano compl
 del genere, sincronizzato al tempo della tua DAW. Con "ChordPilot MIDI" pilota qualsiasi strumento della DAW. Con Ispirazione, ChordPilot ascolta il MIDI
 della tua traccia e propone 10 melodie che la seguono: trascinale direttamente nella DAW.
 
-Requisiti: macOS 10.15+ (Intel/Apple Silicon) · Windows 10/11 64-bit · Linux x86-64 · qualsiasi DAW VST3 o AU.
+Requisiti: macOS 10.13+ (Intel/Apple Silicon) · Windows 10/11 64-bit · Linux x86-64 · qualsiasi DAW VST3 o AU.
 Include: plug-in strumento con uscita MIDI, plug-in effetto MIDI "ChordPilot MIDI", app standalone con collegamento MIDI automatico, aggiornamenti gratuiti.
 
 ## EN
@@ -21,5 +21,5 @@ becomes a hit-worthy chord. Hit "New Song" for a full idea with arpeggio and mel
 With Inspiration, ChordPilot listens to your track's MIDI and suggests 10 melodies that follow it – drag them straight
 into your DAW.
 
-Requirements: macOS 10.15+ (Intel/Apple Silicon) · Windows 10/11 64-bit · Linux x86-64 · any VST3 or AU host.
+Requirements: macOS 10.13+ (Intel/Apple Silicon) · Windows 10/11 64-bit · Linux x86-64 · any VST3 or AU host.
 Includes: instrument plug-in with MIDI output, "ChordPilot MIDI" MIDI-effect plug-in, standalone app with automatic MIDI connection, free updates.
