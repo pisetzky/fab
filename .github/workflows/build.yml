@@ -40,10 +40,28 @@ jobs:
           for b in "$R/VST3/ChordPilot.vst3" "$R/AU/ChordPilot.component" "$R/Standalone/ChordPilot.app" "$M/VST3/ChordPilot MIDI.vst3" "$M/AU/ChordPilot MIDI.component"; do
             codesign --force --deep --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$b"
           done
+      - name: Ad-hoc sign (when no Developer ID certificate)
+        if: env.MACOS_CERT_P12 == ''
+        run: |
+          R=Desktop/build/ChordPilot_artefacts/Release; M=Desktop/build/ChordPilotMIDI_artefacts/Release
+          for b in "$R/VST3/ChordPilot.vst3" "$R/AU/ChordPilot.component" "$R/Standalone/ChordPilot.app" "$M/VST3/ChordPilot MIDI.vst3" "$M/AU/ChordPilot MIDI.component"; do
+            xattr -cr "$b"; codesign --force --deep --sign - "$b"; codesign --verify --deep --strict "$b"
+          done
       - name: Installer .pkg + disk image .dmg
         run: |
           Desktop/Installer/make-mac-pkg.sh Desktop/build/ChordPilot_artefacts/Release out Desktop/build/ChordPilotMIDI_artefacts/Release
           Desktop/Installer/make-mac-dmg.sh Desktop/build/ChordPilot_artefacts/Release out out Desktop/build/ChordPilotMIDI_artefacts/Release
+      - name: Test the DMG like a customer (mount, install, check files)
+        run: |
+          hdiutil attach out/ChordPilot-Mac.dmg -nobrowse -mountpoint /tmp/cpdmg
+          ls -la /tmp/cpdmg
+          sudo installer -pkg "/tmp/cpdmg/Installa ChordPilot.pkg" -target /
+          hdiutil detach /tmp/cpdmg
+          for f in "/Applications/ChordPilot.app" "/Library/Audio/Plug-Ins/VST3/ChordPilot.vst3" "/Library/Audio/Plug-Ins/VST3/ChordPilot MIDI.vst3" "/Library/Audio/Plug-Ins/Components/ChordPilot.component" "/Library/Audio/Plug-Ins/Components/ChordPilot MIDI.component"; do
+            test -d "$f" && echo "OK $f"; codesign --verify --deep "$f"
+          done
+          file /Applications/ChordPilot.app/Contents/MacOS/ChordPilot
+          auval -v aumu Chpd FabA || true
       - name: Notarize (optional)
         if: env.APPLE_ID != ''
         run: |

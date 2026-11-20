@@ -27,8 +27,14 @@ ChordPilot per Mac (Intel e Apple Silicon, macOS 10.15 o successivo)
    L'app ChordPilot è nella cartella Applicazioni.
 
 Non serve installare nient'altro.
+
+Se macOS dice che "non può verificare" l'installer:
+  Impostazioni di Sistema → Privacy e sicurezza → in basso "Apri comunque" → Apri.
 Per rimuoverlo: doppio clic su "Disinstalla ChordPilot".
 TXT
-hdiutil create -volname "ChordPilot" -srcfolder "$STAGE" -ov -format UDZO "$OUT/ChordPilot-Mac.dmg"
+rm -f "$OUT/ChordPilot-Mac.dmg"
+# HFS+ (not APFS) so every macOS version can mount it; UDZO = compressed read-only image.
+hdiutil create -volname "ChordPilot" -srcfolder "$STAGE" -fs HFS+ -format UDZO -imagekey zlib-level=9 "$OUT/ChordPilot-Mac.dmg"
+hdiutil verify "$OUT/ChordPilot-Mac.dmg"
 if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then codesign --sign "$MACOS_SIGN_IDENTITY" --timestamp "$OUT/ChordPilot-Mac.dmg"; fi
 echo "Built $OUT/ChordPilot-Mac.dmg"
