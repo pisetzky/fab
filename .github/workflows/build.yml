@@ -58,7 +58,7 @@ jobs:
           sudo installer -pkg "/tmp/cpdmg/Installa ChordPilot.pkg" -target /
           hdiutil detach /tmp/cpdmg
           for f in "/Applications/ChordPilot.app" "/Library/Audio/Plug-Ins/VST3/ChordPilot.vst3" "/Library/Audio/Plug-Ins/VST3/ChordPilot MIDI.vst3" "/Library/Audio/Plug-Ins/Components/ChordPilot.component" "/Library/Audio/Plug-Ins/Components/ChordPilot MIDI.component"; do
-            test -d "$f" && echo "OK $f"; codesign --verify --deep "$f"
+            test -d "$f" || { echo "MISSING $f"; exit 1; }; echo "OK $f"; codesign --verify --deep "$f"
           done
           file /Applications/ChordPilot.app/Contents/MacOS/ChordPilot
           vtool -show-build /Applications/ChordPilot.app/Contents/MacOS/ChordPilot | grep -E "minos|version" || otool -l /Applications/ChordPilot.app/Contents/MacOS/ChordPilot | grep -A3 LC_VERSION_MIN

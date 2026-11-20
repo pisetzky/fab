@@ -53,14 +53,14 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
 private:
-    juce::ToggleButton oneFinger { "Accordi con un dito" }, scaleLock { "Blocca scala" };
+    juce::ToggleButton oneFinger { "Accordi con un dito" }, scaleLock { "Blocca scala" }, vport { "Porta MIDI virtuale \"ChordPilot\" (per registrare nella DAW)" };
     juce::Slider strum, humanize, swing, transpose;
     juce::Label strumL, humanizeL, swingL, transposeL;
     juce::ComboBox voicing, midiChan, splitBox;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
-    std::unique_ptr<BA> a1, a2; std::unique_ptr<SA> s1, s2, s3, s4; std::unique_ptr<CA> c1, c2;
+    std::unique_ptr<BA> a1, a2, a3; std::unique_ptr<SA> s1, s2, s3, s4; std::unique_ptr<CA> c1, c2;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> c3;
 };
 
@@ -70,6 +70,10 @@ public:
     explicit MidiDragButton(ChordPilotProcessor& p) : juce::TextButton("Trascina MIDI nella DAW"), proc(p) {}
     /// Optional custom source (e.g. an Inspiration option) and file name.
     std::function<std::shared_ptr<const cp::Pattern>()> source;
+    /// Optional writer that replaces the pattern export (used by "Esporta esecuzione").
+    std::function<juce::File()> writer;
+    /// Optional click handler (instead of the save dialog).
+    std::function<void()> onPlainClick;
     juce::String fileName;
     juce::File writeMidi() const;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -137,6 +141,9 @@ private:
     juce::ToggleButton handsToggle { "Due mani" }, notesToggle { "Solo note" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> handsA, notesA;
     MidiDragButton midiButton { proc };
+    MidiDragButton perfButton { proc };                    // the musician's take + everything generated → MIDI
+    juce::String perfLabel;
+    void perfMenu();
     juce::Slider bpmSlider;
     std::array<SuggestionCard, 6> cards;
     KeyboardView keyboard;

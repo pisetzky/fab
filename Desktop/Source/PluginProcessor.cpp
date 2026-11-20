@@ -25,6 +25,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
     // MIDI out for external instruments: separate channels (1 accompaniment, 2 melody, 3 Genius chords) or all on one channel.
     StringArray chans { "Canali separati" }; for (int c = 1; c <= 16; ++c) chans.add("Tutto sul canale " + String(c));
     l.add(std::make_unique<AudioParameterChoice>(ParameterID { "midichan", 1 }, "Uscita MIDI", chans, 0));
+    // Virtual MIDI port "ChordPilot": lets any DAW (also Logic) record everything the plug-in plays on a MIDI track.
+    l.add(std::make_unique<AudioParameterBool>(ParameterID { "vport", 1 }, "Porta MIDI virtuale", false));
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "sync", 1 }, "Sync DAW", true));
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "play", 1 }, "Genre Player", false));
     l.add(std::make_unique<AudioParameterInt>(ParameterID { "progression", 1 }, "Progressione", 0, 5, 0));
@@ -64,6 +66,12 @@ ChordPilotProcessor::ChordPilotProcessor()
     for (auto& a : patternNotes) a = 0;
     for (auto& a : melodyNotes) a = 0;
     pressedToSounding.fill(-1);
+    // Standalone app: publish a virtual MIDI output called "ChordPilot" (macOS / Linux). Every DAW sees it as a
+    // MIDI keyboard, so pressing REC on a MIDI track records your notes, the Genius chords and the Genre Player.
+    if (juce::JUCEApplicationBase::isStandaloneApp()) {
+        virtualOut = juce::MidiOutput::createNewDevice("ChordPilot");
+        virtualOutPtr = virtualOut.get();
+    }
     rebuildPattern();
     rebuildGeniusTable();
     startTimerHz(15);
@@ -101,8 +109,98 @@ const juce::String ChordPilotProcessor::getProgramName(int index) {
     return index >= 0 && index < (int) g.size() ? juce::String(g[(size_t) index].name) : juce::String();
 }
 
+// ---------------------------------------------------------------- Performance recorder
+void ChordPilotProcessor::pushPerf(const juce::MidiMessage& m, int offset, int track) {
+    if (track != 254 && !(m.isNoteOnOrOff() || m.isSustainPedalOn() || m.isSustainPedalOff())) return;
+    int s1, n1, s2, n2;
+    perfFifo.prepareToWrite(1, s1, n1, s2, n2);
+    if (n1 + n2 < 1) return;   // full: drop rather than block the audio thread
+    auto* raw = m.getRawData();
+    const int sz = m.getRawDataSize();
+    perfFifoData[(size_t) (n1 > 0 ? s1 : s2)] = { sampleClock + offset, (juce::uint8) (sz > 0 ? raw[0] : 0), (juce::uint8) (sz > 1 ? raw[1] : 0),
+                                                  (juce::uint8) (sz > 2 ? raw[2] : 0), (juce::uint8) track };
+    perfFifo.finishedWrite(1);
+}
+
+void ChordPilotProcessor::drainPerformance() {
+    int s1, n1, s2, n2; const int ready = perfFifo.getNumReady();
+    perfFifo.prepareToRead(ready, s1, n1, s2, n2);
+    const juce::ScopedLock sl(perfLock);
+    if (perfClearRequested.exchange(false)) { perfLog.clear(); perfStartPpq = -1.0; perfLogStart = -1; }
+    auto add = [this](const PerfEvent& e) { if (e.track == 254) { perfLog.clear(); perfLogStart = e.sample; } else perfLog.push_back(e); };
+    for (int i = 0; i < n1; ++i) add(perfFifoData[(size_t) (s1 + i)]);
+    for (int i = 0; i < n2; ++i) add(perfFifoData[(size_t) (s2 + i)]);
+    perfFifo.finishedRead(n1 + n2);
+    if (perfLog.size() > 400000) perfLog.erase(perfLog.begin(), perfLog.begin() + 100000);   // keep the last ~hour
+}
+
+void ChordPilotProcessor::clearPerformance() { perfClearRequested = true; drainPerformance(); }
+
+double ChordPilotProcessor::performanceSeconds() const {
+    const juce::ScopedLock sl(perfLock);
+    return perfLog.size() < 2 ? 0.0 : (double) (perfLog.back().sample - perfLog.front().sample) / perfSampleRate.load();
+}
+
+int ChordPilotProcessor::performanceNotes() const {
+    const juce::ScopedLock sl(perfLock);
+    int c = 0; for (auto& e : perfLog) c += ((e.status & 0xf0) == 0x90 && e.d2 > 0) ? 1 : 0;
+    return c;
+}
+
+juce::File ChordPilotProcessor::writePerformanceMidi(const juce::File& dest) {
+    drainPerformance();
+    std::vector<PerfEvent> log; juce::int64 recStart = -1;
+    { const juce::ScopedLock sl(perfLock); log = perfLog; recStart = perfLogStart; }
+    if (log.empty()) return {};
+    const double bpm = params.getRawParameterValue("bpm")->load(), sr = perfSampleRate.load(), tpq = 480.0;
+    // A take started by the DAW's REC keeps its position on the timeline (drop the file at bar 1).
+    const double startPpq = perfStartPpq.load();
+    const double offsetTicks = startPpq >= 0 ? startPpq * tpq : 0.0;
+    const juce::int64 t0 = (startPpq >= 0 && recStart >= 0) ? recStart : log.front().sample;
+    constexpr int numTracks = 4;
+    const char* names[numTracks] { "Suonato da te", "Genre Player - accordi e arpeggio", "Genre Player - melodia", "Accordi del Genio" };
+    juce::MidiMessageSequence tracks[numTracks];
+    bool used[numTracks] {};
+    for (auto& e : log) if (e.track < numTracks) used[e.track] = true;
+    for (int t = 0; t < numTracks; ++t) {
+        tracks[t].addEvent(juce::MidiMessage::textMetaEvent(3, names[t]));
+        if (t == 0) tracks[t].addEvent(juce::MidiMessage::tempoMetaEvent((int) (60000000.0 / bpm)));
+    }
+    std::array<std::array<int, 128>, numTracks> open {};
+    double last = 0;
+    for (auto& e : log) {
+        if (e.track >= numTracks) continue;
+        const double tick = offsetTicks + (double) (e.sample - t0) / sr * bpm / 60.0 * tpq;
+        juce::MidiMessage m(e.status, e.d1, e.d2, tick);
+        auto& o = open[e.track];
+        if (m.isNoteOn()) ++o[e.d1]; else if (m.isNoteOff() && o[e.d1] > 0) --o[e.d1]; else if (m.isNoteOff()) continue;
+        tracks[e.track].addEvent(m); last = tick;
+    }
+    for (int t = 0; t < numTracks; ++t)   // close notes still held at the end of the take
+        for (int n = 0; n < 128; ++n) for (int k = 0; k < open[(size_t) t][(size_t) n]; ++k)
+            tracks[t].addEvent(juce::MidiMessage::noteOff(1, n).withTimeStamp(last + tpq / 2));
+    juce::MidiFile file; file.setTicksPerQuarterNote((int) tpq);
+    bool tempoWritten = false;
+    for (int t = 0; t < numTracks; ++t) {
+        if (!used[t]) continue;   // only tracks that have notes
+        if (!tempoWritten && t != 0) tracks[t].addEvent(juce::MidiMessage::tempoMetaEvent((int) (60000000.0 / bpm)));
+        tempoWritten = true;
+        tracks[t].sort(); tracks[t].updateMatchedPairs(); file.addTrack(tracks[t]);
+    }
+    dest.deleteFile();
+    juce::FileOutputStream os(dest);
+    if (!os.openedOk() || !file.writeTo(os)) return {};
+    return dest;
+}
+
 // Runs on the message thread: rebuild the genre-player loop when a musical setting changes.
 void ChordPilotProcessor::timerCallback() {
+    drainPerformance();
+    // Inside a DAW the virtual port is opened on request (Pro > Porta MIDI virtuale) and kept until the plug-in closes.
+    if (!virtualOut && params.getRawParameterValue("vport")->load() > 0.5f) {
+        virtualOut = juce::MidiOutput::createNewDevice("ChordPilot");
+        virtualOutPtr = virtualOut.get();
+    }
     std::array<int, 8> now { genreIndex(), (int) params.getRawParameterValue("key")->load(),
                              (int) params.getRawParameterValue("minor")->load(), (int) params.getRawParameterValue("complexity")->load(),
                              (int) params.getRawParameterValue("progression")->load(), (int) params.getRawParameterValue("arp")->load(),
@@ -225,6 +323,7 @@ void ChordPilotProcessor::geniusChordOff(int offset, juce::MidiBuffer& out) {
     for (int i = 0; i < geniusCount; ++i) {
         synth.noteOff(geniusNotes[i], 4);
         out.addEvent(juce::MidiMessage::noteOff(3, geniusNotes[i]), offset);
+        pushPerf(juce::MidiMessage::noteOff(3, geniusNotes[i]), offset, 3);
     }
     geniusCount = 0; geniusNumTones = 0; geniusChordOn = false;
 }
@@ -327,6 +426,7 @@ void ChordPilotProcessor::handleInput(const juce::MidiMessage& m, int offset, ju
             if (delay == 0) {
                 if (synthOn) synth.noteOn(geniusNotes[i], v, 4);
                 out.addEvent(juce::MidiMessage::noteOn(3, geniusNotes[i], (juce::uint8) v), offset);   // chords on MIDI channel 3
+                pushPerf(juce::MidiMessage::noteOn(3, geniusNotes[i], (juce::uint8) v), offset, 3);
             } else enqueue(sampleClock + offset + delay, 0x92, geniusNotes[i], v, true);
         }
         juce::ignoreUnused(vel);
@@ -476,6 +576,8 @@ void ChordPilotProcessor::handleMidi(const juce::MidiMessage& m, int offset, juc
     const bool suggestionLane = !fromPattern && m.getChannel() == 16;
     const bool melodyLane = fromPattern && m.getChannel() == 2;   // genre-player melody is sent on MIDI channel 2
     const bool geniusLane = fromPattern && m.getChannel() == 3;   // rolled Genius chords (delayed queue)
+    // Recorder tracks: 0 your notes, 1 genre-player chords/arpeggio, 2 genre-player melody, 3 Genius chords.
+    pushPerf(m, offset, geniusLane ? 3 : melodyLane ? 2 : fromPattern ? 1 : 0);
     if (geniusLane) {
         const bool synthOn = params.getRawParameterValue("synth")->load() > 0.5f;
         if (m.isNoteOn()) { if (synthOn) synth.noteOn(m.getNoteNumber(), m.getVelocity(), 4); }
@@ -578,6 +680,15 @@ void ChordPilotProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
                 if (auto q = pos->getPpqPosition()) hostPpq = *q;
                 hostMoving = pos->getIsPlaying();
             }
+    if (auto* ph = getPlayHead())   // DAW pressed REC: start a fresh take aligned to the DAW timeline
+        if (auto pos = ph->getPosition()) {
+            const bool rec = pos->getIsRecording();
+            if (rec && !hostWasRecording) {
+                perfStartPpq = pos->getPpqPosition().orFallback(-1.0);
+                pushPerf(juce::MidiMessage(), 0, 254);
+            }
+            hostWasRecording = rec;
+        }
     const bool followHost = hasHostClock && hostMoving && !juce::JUCEApplicationBase::isStandaloneApp();
     const bool wantPlay = params.getRawParameterValue("play")->load() > 0.5f;
     auto seek = [&] {
@@ -611,6 +722,7 @@ void ChordPilotProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         monoScratch.clear(); R = monoScratch.getWritePointer(0);
     }
 
+    perfSampleRate = sampleRate;
     auto it = midi.cbegin();
     int done = 0;
     while (done < n) {
@@ -666,6 +778,9 @@ void ChordPilotProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
         }
         out.swapWith(mapped);
     }
+    if (auto* vo = virtualOutPtr.load())
+        if (!out.isEmpty() && (juce::JUCEApplicationBase::isStandaloneApp() || params.getRawParameterValue("vport")->load() > 0.5f))
+            vo->sendBlockOfMessagesNow(out);
     midi.swapWith(out);
 }
 

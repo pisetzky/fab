@@ -188,6 +188,10 @@ ProPanel::ProPanel(ChordPilotProcessor& p) {
     addAndMakeVisible(splitBox);
     midiChan.addItem("Uscita MIDI: canali separati", 1);
     for (int c = 1; c <= 16; ++c) midiChan.addItem("Uscita MIDI: tutto sul canale " + juce::String(c), c + 1);
+    addAndMakeVisible(vport);
+    vport.setTooltip("Crea l'ingresso MIDI \"ChordPilot\" nella DAW: su una traccia MIDI scegli ChordPilot come ingresso e premi REC. "
+                     "Registra tutto quello che esce dal plug-in (note, Genio, Genre Player, Nuova canzone).");
+    a3 = std::make_unique<BA>(p.params, "vport", vport);
     addAndMakeVisible(oneFinger); addAndMakeVisible(scaleLock); addAndMakeVisible(voicing); addAndMakeVisible(midiChan);
     auto& s = p.params;
     a1 = std::make_unique<BA>(s, "onefinger", oneFinger);
@@ -199,7 +203,7 @@ ProPanel::ProPanel(ChordPilotProcessor& p) {
     c1 = std::make_unique<CA>(s, "voicing", voicing);
     c2 = std::make_unique<CA>(s, "midichan", midiChan);
     c3 = std::make_unique<CA>(s, "split", splitBox);
-    setSize(440, 380);
+    setSize(500, 416);
 }
 
 void ProPanel::paint(juce::Graphics& g) {
@@ -219,11 +223,13 @@ void ProPanel::resized() {
     r.removeFromTop(6);
     voicing.setBounds(r.removeFromTop(30)); r.removeFromTop(6);
     midiChan.setBounds(r.removeFromTop(30)); r.removeFromTop(6);
-    splitBox.setBounds(r.removeFromTop(30));
+    splitBox.setBounds(r.removeFromTop(30)); r.removeFromTop(6);
+    vport.setBounds(r.removeFromTop(26));
 }
 
 // ---------------------------------------------------------------- MIDI export
 juce::File MidiDragButton::writeMidi() const {
+    if (writer) return writer();
     juce::MidiFile file; file.setTicksPerQuarterNote(480);
     auto pat = source ? source() : proc.currentPattern();
     const double bpm = proc.params.getRawParameterValue("bpm")->load();
@@ -250,14 +256,17 @@ juce::File MidiDragButton::writeMidi() const {
 
 void MidiDragButton::mouseDrag(const juce::MouseEvent& e) {
     if (dragging || e.getDistanceFromDragStart() < 8) return;
-    dragging = true;
     auto f = writeMidi();
+    if (!f.existsAsFile()) return;
+    dragging = true;
     juce::DragAndDropContainer::performExternalDragDropOfFiles({ f.getFullPathName() }, false, this, [this] { dragging = false; });
 }
 
 void MidiDragButton::clicked() {
     if (dragging) return;
+    if (onPlainClick) { onPlainClick(); return; }
     auto f = writeMidi();
+    if (!f.existsAsFile()) return;
     chooser = std::make_unique<juce::FileChooser>("Salva MIDI", juce::File::getSpecialLocation(juce::File::userMusicDirectory).getChildFile(f.getFileName()), "*.mid");
     chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
                          [f](const juce::FileChooser& fc) { auto dest = fc.getResult(); if (dest != juce::File()) f.copyFileTo(dest); });
@@ -427,6 +436,16 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
     newSongButton.setTooltip("Nuova progressione, arpeggio e melodia");
     inspireButton.setTooltip("10 melodie che seguono la tua traccia");
     midiButton.setTooltip("Trascina nella DAW la canzone come file MIDI");
+    perfButton.setButtonText("Esporta esecuzione");
+    perfButton.getProperties().set("primary", true);
+    perfButton.setTooltip("Registra sempre quello che suoni e tutto quello che ChordPilot genera (anche Nuova canzone). "
+                          "Trascinalo su una traccia della DAW, oppure clicca per salvare il MIDI o ricominciare.");
+    perfButton.writer = [this] {
+        auto f = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                     .getChildFile("ChordPilot-esecuzione-" + juce::Time::getCurrentTime().formatted("%Y%m%d-%H%M%S") + ".mid");
+        return proc.writePerformanceMidi(f);
+    };
+    perfButton.onPlainClick = [this] { perfMenu(); };
     handsToggle.setTooltip("Tastiera divisa: sinistra accordi con il basso, destra melodia");
     proButton.setTooltip("Opzioni Pro: accordi con un dito, strum, swing, voicing, uscita MIDI...");
     proButton.onClick = [this] {
@@ -448,7 +467,7 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &genreBox, &pianoBox, &keyBox, &complexityBox, &progressionBox,
             &minorToggle, &synthToggle, &syncToggle, &italianToggle, &playButton, &bpmSlider, &octDown, &octUp, &keyboard,
-            &arpBox, &melodyBox, &newSongButton, &geniusButton, &proButton, &midiButton, &inspireButton, &handsToggle, &notesToggle })
+            &arpBox, &melodyBox, &newSongButton, &geniusButton, &proButton, &midiButton, &inspireButton, &handsToggle, &notesToggle, &perfButton })
         addAndMakeVisible(c);
     for (auto& c : cards) {
         addAndMakeVisible(c);
@@ -525,8 +544,12 @@ void ChordPilotEditor::autoConnectStandaloneMidi() {
     if (auto* holder = juce::StandalonePluginHolder::getInstance()) {
         auto& dm = holder->deviceManager;
         // Every MIDI keyboard that appears is enabled automatically – no MIDI setup needed.
-        for (auto& d : juce::MidiInput::getAvailableDevices())
-            if (!dm.isMidiInputDeviceEnabled(d.identifier)) dm.setMidiInputDeviceEnabled(d.identifier, true);
+        // ChordPilot's own virtual port is skipped (it would feed the app its own output).
+        for (auto& d : juce::MidiInput::getAvailableDevices()) {
+            const bool own = d.name.containsIgnoreCase("ChordPilot");
+            if (own && dm.isMidiInputDeviceEnabled(d.identifier)) dm.setMidiInputDeviceEnabled(d.identifier, false);
+            else if (!own && !dm.isMidiInputDeviceEnabled(d.identifier)) dm.setMidiInputDeviceEnabled(d.identifier, true);
+        }
         auto outs = juce::MidiOutput::getAvailableDevices();
         if (dm.getDefaultMidiOutputIdentifier().isEmpty() && !outs.isEmpty()) dm.setDefaultMidiOutputDevice(outs[0].identifier);
     }
@@ -536,6 +559,11 @@ void ChordPilotEditor::autoConnectStandaloneMidi() {
 void ChordPilotEditor::timerCallback() {
     ++tick;
     if (tick % 60 == 1) autoConnectStandaloneMidi();
+    if (tick % 15 == 0) {   // show the length of the take on the export button
+        const int secs = (int) proc.performanceSeconds();
+        perfLabel = juce::String(secs / 60) + ":" + juce::String(secs % 60).paddedLeft('0', 2);
+        perfButton.setButtonText(secs > 0 ? "Esporta esecuzione " + perfLabel : "Esporta esecuzione");
+    }
     syncEngine();
     int s1, n1, s2, n2;
     int ready = proc.noteFifo.getNumReady();
@@ -650,6 +678,28 @@ void ChordPilotEditor::paint(juce::Graphics& g) {
     }
 }
 
+void ChordPilotEditor::perfMenu() {
+    const int notes = proc.performanceNotes();
+    juce::PopupMenu m;
+    m.addSectionHeader(notes > 0 ? "Esecuzione: " + juce::String(notes) + " note, " + perfLabel : juce::String("Ancora niente: suona qualcosa o premi Genre Player"));
+    m.addItem(1, "Salva come file MIDI...", notes > 0);
+    m.addItem(2, "Azzera e inizia una nuova registrazione", notes > 0);
+    m.addSeparator();
+    m.addItem(3, "Suggerimento: trascina il tasto su una traccia della DAW", false);
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&perfButton), [this](int r) {
+        if (r == 1) {
+            auto f = perfButton.writer();
+            if (!f.existsAsFile()) return;
+            auto chooser = std::make_shared<juce::FileChooser>("Salva esecuzione MIDI",
+                juce::File::getSpecialLocation(juce::File::userMusicDirectory).getChildFile(f.getFileName()), "*.mid");
+            chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                [f, chooser](const juce::FileChooser& fc) { auto dest = fc.getResult(); if (dest != juce::File()) f.copyFileTo(dest.withFileExtension("mid")); });
+        } else if (r == 2) {
+            proc.clearPerformance();
+        }
+    });
+}
+
 void ChordPilotEditor::applyEasy() {
     const bool e = proc.params.getRawParameterValue("easy")->load() > 0.5f;
     easyShown = e;
@@ -673,7 +723,8 @@ void ChordPilotEditor::resized() {
         genreBox.setBounds(top.removeFromLeft(220)); top.removeFromLeft(10);
         pianoBox.setBounds(top.removeFromLeft(260)); top.removeFromLeft(10);
         modeButton.setBounds(top.removeFromLeft(120)); top.removeFromLeft(10);
-        newSongButton.setBounds(top.removeFromLeft(150));
+        newSongButton.setBounds(top.removeFromLeft(150)); top.removeFromLeft(10);
+        perfButton.setBounds(top.removeFromLeft(170));
         helpButton.setBounds(top.removeFromRight(40)); top.removeFromRight(8);
         easyButton.setBounds(top.removeFromRight(110)); top.removeFromRight(8);
         playButton.setBounds(top.removeFromRight(140));
@@ -712,7 +763,8 @@ void ChordPilotEditor::resized() {
     geniusButton.setBounds(third.removeFromLeft(130)); third.removeFromLeft(8);
     proButton.setBounds(third.removeFromLeft(56)); third.removeFromLeft(8);
     midiButton.setBounds(third.removeFromLeft(160)); third.removeFromLeft(8);
-    inspireButton.setBounds(third.removeFromLeft(110));
+    inspireButton.setBounds(third.removeFromLeft(110)); third.removeFromLeft(8);
+    perfButton.setBounds(third.removeFromLeft(juce::jmin(190, third.getWidth())));
     r.removeFromTop(8);
     statusArea = r.removeFromTop(48);
     r.removeFromTop(6);

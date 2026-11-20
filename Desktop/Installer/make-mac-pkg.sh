@@ -19,9 +19,10 @@ for part in vst3 au app; do
   pkgbuild --analyze --root "$WORK/$part" "$WORK/$part.plist"
   i=0
   while /usr/libexec/PlistBuddy -c "Print :$i" "$WORK/$part.plist" >/dev/null 2>&1; do
-    /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$WORK/$part.plist"
-    /usr/libexec/PlistBuddy -c "Set :$i:BundleIsVersionChecked false" "$WORK/$part.plist" 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Set :$i:BundleOverwriteAction upgrade" "$WORK/$part.plist" 2>/dev/null || true
+    pb() { /usr/libexec/PlistBuddy -c "Set :$i:$1 $3" "$WORK/$part.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :$i:$1 $2 $3" "$WORK/$part.plist"; }
+    pb BundleIsRelocatable bool false
+    pb BundleIsVersionChecked bool false
+    pb BundleOverwriteAction string upgrade
     i=$((i+1))
   done
   pkgbuild --root "$WORK/$part" --component-plist "$WORK/$part.plist" --identifier "com.fabaudio.chordpilot.$part" \

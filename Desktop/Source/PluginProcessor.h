@@ -66,13 +66,31 @@ public:
     /// Plays a ready-made loop (track + suggested melody) with the genre player until a setting changes.
     void playCustom(std::shared_ptr<const cp::Pattern> p);
 
-    /// Genius mode lookup for one pitch class (built on the message thread, read by the audio thread).
+    // ---- Performance recorder: what the musician plays + everything ChordPilot generates, exportable as MIDI ----
+    struct PerfEvent { juce::int64 sample = 0; juce::uint8 status = 0, d1 = 0, d2 = 0, track = 0; };  // track 0 = suonato, 1 = generato
+    /// Writes a MIDI file of the performance (2 tracks) and returns it; empty File if nothing was played.
+    juce::File writePerformanceMidi(const juce::File& dest);
+    void clearPerformance();
+    double performanceSeconds() const;                      // length of the take so far
+    int performanceNotes() const;
     /// Genius mode lookup for every key (built on the message thread from the melodic memory, read by the audio thread).
     struct GeniusEntry { int note = 0; int root = 0; int quality = 0; int tones[6] {}; int numTones = 0; };
     using GeniusTable = std::array<GeniusEntry, 128>;
 
 private:
     void timerCallback() override;
+    void pushPerf(const juce::MidiMessage& m, int offset, int track);
+    void drainPerformance();
+    juce::AbstractFifo perfFifo { 16384 };
+    std::array<PerfEvent, 16384> perfFifoData {};
+    std::vector<PerfEvent> perfLog;                         // message thread only (guarded by perfLock)
+    mutable juce::CriticalSection perfLock;
+    std::atomic<double> perfSampleRate { 44100.0 };
+    std::atomic<bool> perfClearRequested { false };
+    std::atomic<double> perfStartPpq { -1.0 };              // DAW position where the REC take began (-1 = free take)
+    bool hostWasRecording = false;
+    juce::int64 perfLogStart = -1;                          // sample of the REC marker (message thread, under perfLock)
+    std::atomic<juce::MidiOutput*> virtualOutPtr { nullptr };
     void rebuildPattern();
     void handleMidi(const juce::MidiMessage& m, int offset, juce::MidiBuffer& out, bool fromPattern);
     void fireStep(int step, const cp::Pattern& p, int offset, juce::MidiBuffer& out);
@@ -131,6 +149,10 @@ private:
     size_t cursor = 0;
     float smoothedVolume = 0.8f;
     juce::AudioBuffer<float> monoScratch;
+    std::unique_ptr<juce::MidiOutput> virtualOut;           // standalone app: virtual MIDI port "ChordPilot" any DAW can record
+public:
+    bool hasVirtualMidiOut() const { return virtualOut != nullptr; }
+private:
     juce::AudioBuffer<float> fxScratch;                     // MIDI-effect build: the piano renders here (not heard)
     juce::MidiBuffer mapped;                                // MIDI out remapped to a single channel
     juce::MidiBuffer chordQueue;                            // notes from tapped suggestions
