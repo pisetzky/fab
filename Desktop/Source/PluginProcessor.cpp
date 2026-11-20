@@ -47,6 +47,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
     l.add(std::make_unique<AudioParameterChoice>(ParameterID { "voicing", 1 }, "Voicing", voicings, 0));
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "hands", 1 }, "Due mani", false));
     l.add(std::make_unique<AudioParameterBool>(ParameterID { "notesonly", 1 }, "Solo note (Genio)", false));
+    l.add(std::make_unique<AudioParameterBool>(ParameterID { "easy", 1 }, "Modalita Facile", true));
     l.add(std::make_unique<AudioParameterInt>(ParameterID { "split", 1 }, "Divisione mani", 36, 84, 60));
     return l;
 }

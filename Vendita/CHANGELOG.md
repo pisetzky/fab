@@ -9,4 +9,6 @@
 - Modalità Genio con voicing da pianista
 - Ispirazione: 10 melodie che seguono la traccia
 - Opzioni Pro: accordi con un dito, blocca scala, strum, humanize, swing, voicing, trasposizione
-- Export MIDI, plug-in AUv3 / VST3 / AU, app standalone con MIDI automatico
+- Export MIDI e trascinamento nella DAW, plug-in VST3 / AU, app standalone con MIDI automatico
+- Modalità Facile, guida integrata, cervello melodico della Modalità Genio
+- Versione per Mac, Windows e Linux; installazione in un clic (dmg / setup)

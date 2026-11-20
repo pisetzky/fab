@@ -10,6 +10,4 @@ Titolare: **[TUO NOME / AZIENDA]**, [INDIRIZZO], [EMAIL SUPPORTO]
    salvo quanto permesso dalla legge.
 4. **Garanzia.** Il software è fornito "così com'è". Nei limiti di legge il titolare non risponde di danni
    indiretti derivanti dall'uso.
-5. **App Store.** Per le copie acquistate tramite App Store si applica anche il contratto di licenza
-   standard di Apple (Licensed Application End User License Agreement).
-6. **Legge applicabile.** [PAESE / FORO COMPETENTE].
+5. **Legge applicabile.** [PAESE / FORO COMPETENTE].

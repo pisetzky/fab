@@ -1,12 +1,14 @@
 # Supporto – domande frequenti
 
+**Devo installare altro?** No: il dmg (Mac) e il setup (Windows) contengono tutto.
+
 **Il plug-in non compare nella DAW.** Riscansiona i plug-in. Su Mac il VST3 è in /Library/Audio/Plug-Ins/VST3,
 l'AU in /Library/Audio/Plug-Ins/Components; su Windows in C:\Program Files\Common Files\VST3.
 
 **Non sento il suono.** Controlla che "Pianoforte interno" sia attivo e che la traccia della DAW sia una traccia strumento.
 
-**La tastiera MIDI non funziona.** ChordPilot collega da solo tutti gli ingressi MIDI. Per le tastiere Bluetooth su iPad
-usa il pulsante del cavo → "Abbina tastiera MIDI Bluetooth".
+**La tastiera MIDI non funziona.** Nell'app Standalone ChordPilot attiva da solo ogni ingresso MIDI; nella DAW
+controlla che la traccia di ChordPilot riceva la tastiera.
 
 **Posso usare un altro strumento al posto del pianoforte?** Sì: usa "ChordPilot MIDI" come effetto MIDI davanti allo
 strumento (o instrada l'uscita MIDI) e scegli "Uscita MIDI → Tutto sul canale 1". Guida completa: GUIDA-STRUMENTI-DAW.md.

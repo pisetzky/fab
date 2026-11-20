@@ -1,55 +1,48 @@
-# ChordPilot – pacchetto per la vendita
+# ChordPilot 1.0 – kit per la vendita
 
-Questa cartella contiene tutto ciò che serve per **pubblicare e vendere** ChordPilot.
+ChordPilot è un plug-in per **Mac, Windows e Linux**: VST3, Audio Unit (Mac), app Standalone e
+**ChordPilot MIDI** (effetto MIDI per suonare qualsiasi strumento della DAW).
 I segnaposto da completare sono scritti così: **[TUO NOME / AZIENDA]**, **[EMAIL SUPPORTO]**, **[SITO WEB]**.
 
-## 1. Cosa è pronto
+## 1. Cosa ricevono i clienti
+La cartella **ChordPilot-1.0-Download** (o i singoli file):
 
-| Versione | Formato | Stato |
+| Sistema | File | Cosa fa il cliente |
 |---|---|---|
-| iPad / iPhone (web) | `ChordPilot.html` – si aggiunge alla Home | ✅ pronto (pubblicabile su qualsiasi hosting) |
-| Linux | VST3 + Standalone | ✅ compilato |
-| iPad (app nativa) | App + plug-in AUv3 (strumento e MIDI FX) | 🛠 codice completo, da compilare con Xcode e firmare |
-| Mac (Intel + Apple Silicon) | VST3 + AU + Standalone: immagine disco `.dmg` (app da trascinare + installer `.pkg` con scelta componenti) | 🛠 compilazione automatica (GitHub Actions) |
-| Windows | VST3 + Standalone, installer `.exe` con scelta componenti | 🛠 compilazione automatica (GitHub Actions) |
+| Mac (Intel + Apple Silicon, macOS 10.15+) | `ChordPilot-Mac.dmg` | apre il dmg → doppio clic su **Installa ChordPilot** → Continua → Installa |
+| Windows 10/11 64 bit | `ChordPilot-Windows-Setup.exe` | doppio clic → Avanti → Installa |
+| Linux x86-64 | `Linux/` + `Installa-Linux.sh` | doppio clic sullo script |
 
-Funzioni incluse in tutte le versioni: 23 generi, 10 pianoforti, suggerimento accordi e note,
-Genre Player con 30 arpeggi × 30 melodie per genere, Nuova canzone, Modalità Genio, Ispirazione
-(10 melodie che seguono la traccia), opzioni Pro (accordi con un dito, blocca scala, strum, humanize,
-swing, voicing, trasposizione), Modalità Pianista, Due mani, Accordi/Note, Modalità Facile,
-versione effetto MIDI per pilotare qualsiasi strumento della DAW, export MIDI. La versione web ha in più
-costruttore di brani, cerchio delle quinte con cambi di tonalità e "Le mie canzoni".
+Il cliente **non deve installare nient'altro**: niente GitHub, Java, Xcode, runtime o librerie.
+Tutto è incluso nei plug-in (anche la libreria Visual C++ su Windows).
 
-## 2. Passaggi obbligatori prima di vendere
+## 2. Come si ottengono i file di installazione
+I file `.dmg` (Mac) ed `.exe` (Windows) si creano sui sistemi Mac e Windows. È già tutto automatizzato:
+1. Metti il codice (`Sorgenti` / questo repository) su GitHub.
+2. La compilazione automatica (`.github/workflows/build.yml`) crea `ChordPilot-Mac.dmg`, `ChordPilot-Mac.pkg`,
+   `ChordPilot-Windows-Setup.exe`, la versione Linux e le cartelle **ChordPilot-1.0-Download** e **ChordPilot-1.0-Vendita**.
+3. Crea un tag `v1.0.0`: i file vengono pubblicati come *Release*, pronti da caricare sul tuo negozio.
 
-1. **Licenza JUCE** (versione desktop). JUCE 8 è distribuito con doppia licenza (AGPLv3 o commerciale).
-   Per vendere un plug-in a codice chiuso serve una licenza commerciale JUCE (esiste un piano gratuito
-   per ricavi sotto una certa soglia): verifica i termini aggiornati su juce.com prima della vendita.
-2. **VST3**: usa il logo "VST" e il marchio Steinberg solo secondo le linee guida Steinberg
-   e verifica la licenza dell'SDK VST3 in uso (nelle versioni recenti è open source).
-3. **Apple** (iPad e Mac): iscrizione all'Apple Developer Program (99 €/anno),
-   firma del codice, notarizzazione del `.pkg` Mac, revisione App Store per l'app iPad.
-4. **Windows**: certificato di firma del codice (evita l'avviso "PC protetto" di SmartScreen).
-5. **Identificativi**: sostituisci `com.fabaudio…` (bundle ID) e il codice produttore `FabA`
-   con quelli della tua azienda (in `ChordPilot/project.yml`, `AUExtension/Info.plist`,
-   `Desktop/CMakeLists.txt`).
-6. **Nome commerciale**: verifica che "ChordPilot" sia libero come marchio nel tuo mercato
-   (in alternativa scegli un altro nome: va cambiato in pochi file).
-7. Completa i segnaposto in `Legale/` (titolare, email, sede) e pubblica EULA e Privacy sul tuo sito.
+## 3. Passaggi obbligatori prima di vendere
+1. **Firma e notarizzazione Apple** (Apple Developer Program, 99 €/anno): senza, macOS mostra un avviso
+   all'apertura del dmg. Inserisci nei *Secrets* del repository: `MACOS_CERT_P12`, `MACOS_CERT_PASSWORD`,
+   `MACOS_SIGN_IDENTITY` (Developer ID Application), `MACOS_INSTALLER_IDENTITY` (Developer ID Installer),
+   `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD`: la compilazione firmerà e notarizzerà da sola.
+2. **Firma Windows** (certificato di firma del codice): evita l'avviso SmartScreen.
+   Secrets: `WINDOWS_CERT_PFX`, `WINDOWS_CERT_PASSWORD`.
+3. **Licenza JUCE**: JUCE 8 è AGPLv3 o commerciale. Per vendere a codice chiuso serve la licenza commerciale
+   (esiste un piano gratuito sotto una soglia di ricavi): verifica i termini aggiornati su juce.com.
+4. **VST3**: usa il marchio/logo "VST" secondo le linee guida Steinberg e verifica la licenza dell'SDK incluso in JUCE.
+5. **Identificativi**: sostituisci `com.fabaudio…` e il codice produttore `FabA` con quelli della tua azienda
+   (`Desktop/CMakeLists.txt`, `Desktop/Installer/*`).
+6. **Nome**: verifica che "ChordPilot" sia libero come marchio (altrimenti cambialo nei pochi file indicati).
+7. Completa i segnaposto in `Legale/` e pubblica EULA e Privacy sul tuo sito.
 
-## 3. Dove vendere
+## 4. Dove vendere
+- Il tuo sito con un negozio digitale (Gumroad, Paddle, FastSpring, Lemon Squeezy…): carica il `.dmg` e l'`.exe`.
+- Marketplace di plug-in. Testo pronto: `Store/Pagina-prodotto-IT-EN.md`; prezzi: `Prezzi.md`;
+  immagini: `PressKit/`.
 
-- **App Store (iPad + Mac Apple Silicon)**: testi pronti in `Store/AppStore-IT.md` e `Store/AppStore-EN.md`,
-  screenshot 2732×2048 in `PressKit/screenshots/`, icona 1024×1024 in `PressKit/icona-1024.png`.
-- **Plug-in desktop (VST3/AU)**: il tuo sito con un negozio digitale (es. Gumroad, Paddle, FastSpring,
-  Lemon Squeezy) oppure marketplace di plug-in. Testo pronto in `Store/Pagina-prodotto-IT-EN.md`.
-- **Versione web**: pubblica `ChordPilot.html` su un hosting (anche gratuito) e vendi l'accesso
-  o usala come demo gratuita che porta all'acquisto della versione completa.
-
-Prezzi consigliati: vedi `Prezzi.md`.
-
-## 4. Nota sulla protezione
-
-La versione attuale non ha un sistema di licenze/codici di attivazione: sugli store (App Store)
-non serve; per la vendita diretta dei plug-in desktop puoi usare la gestione chiavi del negozio
-digitale scelto o aggiungere un sistema di attivazione in una versione successiva.
+## 5. Nota sulla protezione
+Non c'è un sistema di codici di attivazione: puoi usare la gestione delle chiavi del negozio digitale
+o aggiungerne uno in una versione successiva.

@@ -1,28 +1,34 @@
 #!/bin/bash
-# Builds ChordPilot-Mac.dmg: drag-to-install app, one-click installer (.pkg) and the plug-ins.
-# Usage: make-mac-dmg.sh <artefacts/Release dir> <dir containing ChordPilot-Mac.pkg> <output dir>
+# Builds ChordPilot-Mac.dmg for customers: open it, double-click "Installa ChordPilot", done.
+# Usage: make-mac-dmg.sh <ChordPilot artefacts/Release> <dir containing ChordPilot-Mac.pkg> <output dir> [<ChordPilotMIDI artefacts/Release>]
 set -euo pipefail
-SRC="$1"; PKGDIR="$2"; OUT="$3"; MIDI="${4:-}"
+PKGDIR="$2"; OUT="$3"
 STAGE="$(mktemp -d)/ChordPilot"
-mkdir -p "$STAGE/Plug-in" "$OUT"
-cp -R "$SRC/Standalone/ChordPilot.app" "$STAGE/"
-ln -s /Applications "$STAGE/Applicazioni"
-cp "$PKGDIR/ChordPilot-Mac.pkg" "$STAGE/Installa ChordPilot (tutto).pkg"
-cp -R "$SRC/VST3/ChordPilot.vst3" "$STAGE/Plug-in/"
-cp -R "$SRC/AU/ChordPilot.component" "$STAGE/Plug-in/"
-if [ -n "$MIDI" ]; then cp -R "$MIDI/VST3/ChordPilot MIDI.vst3" "$MIDI/AU/ChordPilot MIDI.component" "$STAGE/Plug-in/"; fi
-cat > "$STAGE/LEGGIMI.txt" <<TXT
-ChordPilot per Mac (Intel e Apple Silicon)
+mkdir -p "$STAGE" "$OUT"
+cp "$PKGDIR/ChordPilot-Mac.pkg" "$STAGE/Installa ChordPilot.pkg"
+cat > "$STAGE/Disinstalla ChordPilot.command" <<'UNINSTALL'
+#!/bin/bash
+echo "Rimuovo ChordPilot (serve la password del Mac)…"
+sudo rm -rf "/Applications/ChordPilot.app" \
+  "/Library/Audio/Plug-Ins/VST3/ChordPilot.vst3" "/Library/Audio/Plug-Ins/VST3/ChordPilot MIDI.vst3" \
+  "/Library/Audio/Plug-Ins/Components/ChordPilot.component" "/Library/Audio/Plug-Ins/Components/ChordPilot MIDI.component"
+sudo pkgutil --forget com.fabaudio.chordpilot.vst3 >/dev/null 2>&1
+sudo pkgutil --forget com.fabaudio.chordpilot.au >/dev/null 2>&1
+sudo pkgutil --forget com.fabaudio.chordpilot.app >/dev/null 2>&1
+echo "Fatto: ChordPilot è stato rimosso."
+UNINSTALL
+chmod +x "$STAGE/Disinstalla ChordPilot.command"
+cat > "$STAGE/LEGGIMI.txt" <<'TXT'
+ChordPilot per Mac (Intel e Apple Silicon, macOS 10.15 o successivo)
 
-INSTALLA TUTTO IN UN CLIC
-  Doppio clic su "Installa ChordPilot (tutto).pkg" e scegli VST3, Audio Unit e/o app.
+1. Doppio clic su "Installa ChordPilot".
+2. Premi Continua → Installa (inserisci la password del Mac quando richiesta).
+3. Apri la tua DAW e cerca Fab Audio → ChordPilot (strumento) o ChordPilot MIDI (effetto MIDI).
+   L'app ChordPilot è nella cartella Applicazioni.
 
-OPPURE A MANO
-  • App:       trascina ChordPilot.app nella cartella Applicazioni.
-  • VST3:      copia Plug-in/ChordPilot.vst3 in /Library/Audio/Plug-Ins/VST3
-  • AU:        copia Plug-in/ChordPilot.component in /Library/Audio/Plug-Ins/Components
-
-Poi apri la DAW e cerca Fab Audio → ChordPilot.
+Non serve installare nient'altro.
+Per rimuoverlo: doppio clic su "Disinstalla ChordPilot".
 TXT
 hdiutil create -volname "ChordPilot" -srcfolder "$STAGE" -ov -format UDZO "$OUT/ChordPilot-Mac.dmg"
+if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then codesign --sign "$MACOS_SIGN_IDENTITY" --timestamp "$OUT/ChordPilot-Mac.dmg"; fi
 echo "Built $OUT/ChordPilot-Mac.dmg"

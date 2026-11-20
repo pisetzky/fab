@@ -1,16 +1,12 @@
-# ChordPilot su Windows – VST3 + app Standalone
+# ChordPilot su Windows 10/11 (64 bit)
 
-1. Fai doppio clic su **ChordPilot-Windows-Setup.exe**.
-   (Se Windows mostra "PC protetto": *Ulteriori informazioni → Esegui comunque*. L'installer non è ancora firmato.)
+1. Doppio clic su **ChordPilot-Windows-Setup.exe** → Avanti → Installa. Non serve installare nient'altro.
 2. Scegli cosa installare:
-   - **Tutto** – plug-in VST3 + app Standalone
-   - **Solo plug-in VST3** – per Ableton Live, FL Studio, Cubase, Reaper, Studio One, Bitwig…
-   - **Solo app Standalone**
-3. Il VST3 va in `C:\Program Files\Common Files\VST3` (la cartella che tutte le DAW leggono già).
-   Nella DAW: riscansiona i plug-in e cerca **Fab Audio → ChordPilot**.
+   - **Plug-in VST3**: ChordPilot (strumento) + ChordPilot MIDI (effetto MIDI)
+   - **App Standalone**
+3. I VST3 vanno in `C:\Program Files\Common Files\VST3`. Nella DAW riscansiona i plug-in e cerca **Fab Audio → ChordPilot**.
 
-**App Standalone**: si apre con la scheda audio predefinita e attiva da sola ogni tastiera MIDI collegata,
-anche quelle che colleghi dopo. Da *Options → Audio/MIDI Settings* puoi scegliere un driver ASIO o WASAPI.
+L'app Standalone usa la scheda audio predefinita e attiva da sola ogni tastiera MIDI collegata;
+da *Options → Audio/MIDI Settings* puoi scegliere ASIO o WASAPI.
 
-> Se `ChordPilot-Windows-Setup.exe` manca da questa cartella, viene creato dalla compilazione automatica
-> su GitHub (`.github/workflows/ipad-build.yml`); il codice è in `iPad/ChordPilot-source.zip`, cartella `Desktop`.
+Se compare "PC protetto da Windows": *Ulteriori informazioni → Esegui comunque* (le copie in vendita vanno firmate).

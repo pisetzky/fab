@@ -1,6 +1,7 @@
-# ChordPilot su Linux – VST3 + app Standalone (x86-64)
+# ChordPilot su Linux (x86-64)
 
-- **App Standalone**: `ChordPilot` → rendilo eseguibile (`chmod +x ChordPilot`) e avvialo.
-- **VST3**: copia la cartella `ChordPilot.vst3` in `~/.vst3/` (Reaper, Bitwig, Ardour, Carla…).
+Doppio clic su `Installa-Linux.sh` (oppure `bash Installa-Linux.sh`):
+- **VST3** ChordPilot e ChordPilot MIDI → `~/.vst3/` (Reaper, Bitwig, Ardour, Carla…)
+- **App Standalone** → `~/.local/bin/ChordPilot` e menu Applicazioni
 
-Richiede ALSA e un server grafico X11/Wayland (XWayland).
+Richiede ALSA e un server grafico X11 (o XWayland).

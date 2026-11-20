@@ -1,0 +1,8 @@
+ChordPilot 1.0
+
+  MAC:      apri Mac/ChordPilot-Mac.dmg → doppio clic su "Installa ChordPilot" → Continua → Installa
+  WINDOWS:  doppio clic su Windows/ChordPilot-Windows-Setup.exe → Avanti → Installa
+  LINUX:    doppio clic su Installa-Linux.sh
+
+Non serve installare nient'altro. Poi apri la DAW e cerca Fab Audio → ChordPilot.
+Per suonare un altro strumento della DAW: GUIDA-STRUMENTI-DAW.md

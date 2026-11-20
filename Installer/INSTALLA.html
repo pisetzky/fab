@@ -6,89 +6,63 @@
 <title>ChordPilot – Installa</title>
 <style>
   :root { --night:#050b1a; --deep:#0b1736; --card:rgba(16,30,64,.7); --line:rgba(140,190,255,.16); --fg:#eaf2ff; --muted:#9fb2d6;
-          --green:#3dffb0; --teal:#19d3c5; --violet:#8e6cff; --magenta:#e05bff; --soon:#ffc233; color-scheme: dark; }
+          --green:#3dffb0; --teal:#19d3c5; --violet:#8e6cff; color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--fg); min-height: 100vh;
          background:
            radial-gradient(ellipse 70% 30% at 20% 8%, rgba(61,255,176,.28), transparent 70%),
            radial-gradient(ellipse 60% 25% at 70% 4%, rgba(142,108,255,.30), transparent 70%),
-           radial-gradient(ellipse 50% 20% at 50% 16%, rgba(25,211,197,.18), transparent 70%),
            linear-gradient(var(--night), var(--deep));
          padding: 40px max(16px, env(safe-area-inset-left)); }
-  main { max-width: 1040px; margin: 0 auto; }
-  h1 { font-size: 42px; margin: 0 0 6px; letter-spacing: -.5px;
-       background: linear-gradient(90deg, var(--green), var(--teal) 50%, var(--violet)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  p.lead { color: var(--muted); margin: 0 0 30px; font-size: 17px; max-width: 62ch; }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 42px; margin: 0 0 6px; background: linear-gradient(90deg, var(--green), var(--teal) 50%, var(--violet)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p.lead { color: var(--muted); margin: 0 0 28px; font-size: 17px; max-width: 64ch; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; display:flex; flex-direction:column; gap:10px; backdrop-filter: blur(8px); }
-  .card.hero { border-color: rgba(61,255,176,.55); box-shadow: 0 0 30px rgba(61,255,176,.15); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; display:flex; flex-direction:column; gap:10px; }
+  .card.hero { border-color: rgba(61,255,176,.55); }
   .card h2 { margin: 0; font-size: 20px; }
   .badge { align-self:flex-start; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(61,255,176,.14); color: var(--green); }
-  .badge.v { background: rgba(142,108,255,.18); color: #b9a6ff; }
   .card p, .card li { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
   .card ul { padding-left: 18px; margin: 0; }
-  a.btn { display:block; margin-top:auto; text-align:center; padding: 11px 14px; border-radius: 12px;
-          background: linear-gradient(135deg, var(--green), var(--teal)); color: #022018; font-weight: 700; text-decoration: none; }
-  a.btn.secondary { background: rgba(255,255,255,.08); color: var(--fg); margin-top: 0; }
-  footer { margin-top: 28px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+  a.btn { display:block; margin-top:auto; text-align:center; padding: 11px 14px; border-radius: 12px; background: linear-gradient(135deg, var(--green), var(--teal)); color: #022018; font-weight: 700; text-decoration: none; }
   code { background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 6px; }
+  footer { margin-top: 26px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 </style>
 </head>
 <body>
 <main>
   <h1>ChordPilot</h1>
-  <p class="lead">Suona una nota o un accordo: i tasti successivi si illuminano nello stile del genere scelto (23 generi), con 10 tipi di pianoforte. Scegli cosa installare.</p>
+  <p class="lead">Il plug-in che trasforma qualsiasi tasto in musica da pianista: 23 generi, 10 pianoforti, Modalità Genio, Due mani, Ispirazione. VST3 · AU · Standalone · effetto MIDI per qualsiasi strumento della DAW.</p>
   <div class="grid">
     <section class="card hero">
-      <span class="badge">Pronta adesso · nessun computer</span>
-      <h2>iPad – versione web</h2>
-      <ul>
-        <li>Apri il link in Safari → Condividi → <b>Aggiungi alla schermata Home</b></li>
-        <li>23 generi, 10 pianoforti, Genre Player</li>
-      </ul>
-      <a class="btn" href="https://claude.ai/artifact/R1g2atc9qJ8a2an6N4cGF5">Apri ChordPilot web</a>
-      <a class="btn secondary" href="iPad/ChordPilot.html">File ChordPilot.html</a>
-    </section>
-    <section class="card">
-      <span class="badge v">App nativa</span>
-      <h2>iPad – app + plug-in AUv3 + Standalone</h2>
-      <ul>
-        <li>GarageBand, Logic Pro per iPad, Cubasis, AUM, Loopy Pro…</li>
-        <li>MIDI e audio si collegano da soli</li>
-      </ul>
-      <a class="btn" href="iPad/COME_INSTALLARE.md">Istruzioni iPad</a>
-    </section>
-    <section class="card">
-      <span class="badge v">VST3 · AU · Standalone</span>
-      <h2>Mac (Intel e Apple Silicon)</h2>
-      <p>Installer <code>ChordPilot-Mac.pkg</code>: scegli VST3, Audio Unit e/o app Standalone.</p>
+      <span class="badge">Mac · Intel e Apple Silicon</span>
+      <h2>ChordPilot per Mac</h2>
+      <ul><li><code>Mac/ChordPilot-Mac.dmg</code>: apri e fai doppio clic su "Installa ChordPilot"</li><li>VST3, Audio Unit (anche MIDI FX), app Standalone</li></ul>
       <a class="btn" href="Mac/LEGGIMI.md">Istruzioni Mac</a>
     </section>
     <section class="card">
-      <span class="badge v">VST3 · Standalone</span>
-      <h2>Windows</h2>
-      <p>Installer <code>ChordPilot-Windows-Setup.exe</code>: scegli plug-in VST3, app Standalone o entrambi.</p>
+      <span class="badge">Windows 10/11</span>
+      <h2>ChordPilot per Windows</h2>
+      <ul><li><code>Windows/ChordPilot-Windows-Setup.exe</code></li><li>VST3 (ChordPilot + ChordPilot MIDI) e app Standalone</li></ul>
       <a class="btn" href="Windows/LEGGIMI.md">Istruzioni Windows</a>
     </section>
     <section class="card">
-      <span class="badge v">VST3 · Standalone</span>
-      <h2>Linux</h2>
-      <p>App Standalone e plug-in VST3 già compilati (x86-64).</p>
+      <span class="badge">Linux x86-64</span>
+      <h2>ChordPilot per Linux</h2>
+      <ul><li>App Standalone e VST3 (ChordPilot + ChordPilot MIDI)</li><li><code>Installa-Linux.sh</code></li></ul>
       <a class="btn" href="Linux/LEGGIMI.md">Istruzioni Linux</a>
     </section>
   </div>
-  <section class="card hero" style="margin-top:16px">
-    <span class="badge">Un clic</span>
-    <h2>Installa tutto</h2>
+  <section class="card" style="margin-top:16px">
+    <h2>Installazione in un clic, senza installare nient'altro</h2>
     <ul>
-      <li><b>Mac</b>: doppio clic su <code>Installa-Mac.command</code> → Invio</li>
-      <li><b>Windows</b>: doppio clic su <code>Installa-Windows.bat</code> → Invio</li>
+      <li><b>Mac</b>: apri <code>ChordPilot-Mac.dmg</code> → doppio clic su <b>Installa ChordPilot</b> → Continua → Installa</li>
+      <li><b>Windows</b>: doppio clic su <code>ChordPilot-Windows-Setup.exe</code> → Avanti → Installa</li>
       <li><b>Linux</b>: doppio clic su <code>Installa-Linux.sh</code></li>
-      <li><b>iPad</b>: tocca "Apri ChordPilot web" qui sopra → Condividi → Aggiungi alla schermata Home</li>
     </ul>
+    <p>Per usare ChordPilot con un altro strumento della DAW leggi <code>GUIDA-STRUMENTI-DAW.md</code>.</p>
   </section>
-  <footer>Menu di installazione: <code>Installa-Mac.command</code> (Mac) · <code>Installa-Windows.bat</code> (Windows) · <code>Installa-Linux.sh</code> (Linux).<br>
-  Cartelle: <code>iPad/</code> · <code>Mac/</code> · <code>Windows/</code> · <code>Linux/</code></footer>
+  <footer>Cartelle: <code>Mac/</code> · <code>Windows/</code> · <code>Linux/</code></footer>
 </main>
 </body>
 </html>

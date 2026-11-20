@@ -1,0 +1,142 @@
+name: ChordPilot – build plug-ins, installers & download folder
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  mac:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      # Optional Apple secrets (repository Settings → Secrets): signing and notarization run only when they are set.
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}          # "Developer ID Application: …"
+      MACOS_INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }} # "Developer ID Installer: …"
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build VST3 + AU + Standalone + ChordPilot MIDI (universal Intel/Apple Silicon)
+        working-directory: Desktop
+        run: |
+          cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          cmake --build build --config Release --target ChordPilot_VST3 ChordPilot_AU ChordPilot_Standalone ChordPilotMIDI_VST3 ChordPilotMIDI_AU ChordPilotEngineTests -- -quiet
+          ./build/Release/ChordPilotEngineTests
+      - name: Sign plug-ins and app (optional)
+        if: env.MACOS_CERT_P12 != ''
+        run: |
+          echo "$MACOS_CERT_P12" | base64 --decode > cert.p12
+          security create-keychain -p ci build.keychain && security default-keychain -s build.keychain
+          security unlock-keychain -p ci build.keychain
+          security import cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
+          R=Desktop/build/ChordPilot_artefacts/Release; M=Desktop/build/ChordPilotMIDI_artefacts/Release
+          for b in "$R/VST3/ChordPilot.vst3" "$R/AU/ChordPilot.component" "$R/Standalone/ChordPilot.app" "$M/VST3/ChordPilot MIDI.vst3" "$M/AU/ChordPilot MIDI.component"; do
+            codesign --force --deep --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$b"
+          done
+      - name: Installer .pkg + disk image .dmg
+        run: |
+          Desktop/Installer/make-mac-pkg.sh Desktop/build/ChordPilot_artefacts/Release out Desktop/build/ChordPilotMIDI_artefacts/Release
+          Desktop/Installer/make-mac-dmg.sh Desktop/build/ChordPilot_artefacts/Release out out Desktop/build/ChordPilotMIDI_artefacts/Release
+      - name: Notarize (optional)
+        if: env.APPLE_ID != ''
+        run: |
+          for f in out/ChordPilot-Mac.dmg out/ChordPilot-Mac.pkg; do
+            xcrun notarytool submit "$f" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+            xcrun stapler staple "$f"
+          done
+      - uses: actions/upload-artifact@v4
+        with: { name: mac, path: out }
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}         # optional code-signing certificate (base64 .pfx)
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build VST3 + Standalone + ChordPilot MIDI
+        working-directory: Desktop
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          cmake --build build --config Release --target ChordPilot_VST3 ChordPilot_Standalone ChordPilotMIDI_VST3 ChordPilotEngineTests
+          .\build\Release\ChordPilotEngineTests.exe
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DSrcDir="$pwd\Desktop\build\ChordPilot_artefacts\Release" /DMidiDir="$pwd\Desktop\build\ChordPilotMIDI_artefacts\Release" /O"$pwd\out" Desktop\Installer\ChordPilot-Windows.iss
+      - name: Sign the installer (optional)
+        if: env.WINDOWS_CERT_PFX != ''
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1
+          & $signtool.FullName sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 out\ChordPilot-Windows-Setup.exe
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: out }
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build VST3 + Standalone + ChordPilot MIDI
+        working-directory: Desktop
+        run: |
+          sudo apt-get update && sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libfreetype-dev libfontconfig1-dev
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target ChordPilot_VST3 ChordPilot_Standalone ChordPilotMIDI_VST3 ChordPilotEngineTests -j4
+          ./build/ChordPilotEngineTests
+          mkdir -p ../out && cp build/ChordPilot_artefacts/Release/Standalone/ChordPilot ../out/
+          cp -R build/ChordPilot_artefacts/Release/VST3/ChordPilot.vst3 "build/ChordPilotMIDI_artefacts/Release/VST3/ChordPilot MIDI.vst3" ../out/
+      - uses: actions/upload-artifact@v4
+        with: { name: linux, path: out }
+
+  download-folder:
+    needs: [mac, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: artefacts }
+      - name: Assemble the download folders (customers / seller)
+        run: |
+          set -e
+          C=dist/ChordPilot-1.0-Download      # what customers download: only installers, nothing else needed
+          S=dist/ChordPilot-1.0-Vendita       # for the seller: store texts, legal, press kit, sources
+          mkdir -p "$C" "$S"
+          cp -R Installer/. "$C/"
+          cp artefacts/mac/* "$C/Mac/"
+          cp artefacts/windows/* "$C/Windows/"
+          cp -R artefacts/linux/. "$C/Linux/"
+          chmod +x "$C/Linux/ChordPilot" "$C"/*.sh
+          cp -R Vendita/. "$S/"
+          git archive --format=zip --prefix=ChordPilot-source/ -o "$S/ChordPilot-source-1.0.zip" HEAD
+          cp "$C/Mac/ChordPilot-Mac.dmg" "$C/Windows/ChordPilot-Windows-Setup.exe" dist/
+          (cd dist && zip -qry ChordPilot-1.0-Download.zip ChordPilot-1.0-Download && zip -qry ChordPilot-1.0-Vendita.zip ChordPilot-1.0-Vendita)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChordPilot-1.0
+          path: |
+            dist/ChordPilot-1.0-Download.zip
+            dist/ChordPilot-1.0-Vendita.zip
+            dist/ChordPilot-Mac.dmg
+            dist/ChordPilot-Windows-Setup.exe
+      - name: Publish release (on tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/ChordPilot-Mac.dmg
+            dist/ChordPilot-Windows-Setup.exe
+            dist/ChordPilot-1.0-Download.zip

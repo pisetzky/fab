@@ -23,7 +23,7 @@ public:
     std::map<int, cp::Highlight> highlights;
     std::set<int> held, pattern, melody;
     std::map<int, juce::String> geniusNext;   // note → chord name (Pianist mode suggestions)
-    bool italian = true, showScale = true, flats = false;
+    bool italian = true, showScale = true, flats = false, easyView = false;
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -48,17 +48,20 @@ public:
 class ProPanel : public juce::Component {
 public:
     explicit ProPanel(ChordPilotProcessor& p);
+    ~ProPanel() override { setLookAndFeel(nullptr); }
+    juce::SharedResourcePointer<AuroraLookAndFeel> lnf;
     void paint(juce::Graphics&) override;
     void resized() override;
 private:
     juce::ToggleButton oneFinger { "Accordi con un dito" }, scaleLock { "Blocca scala" };
     juce::Slider strum, humanize, swing, transpose;
     juce::Label strumL, humanizeL, swingL, transposeL;
-    juce::ComboBox voicing, midiChan;
+    juce::ComboBox voicing, midiChan, splitBox;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     std::unique_ptr<BA> a1, a2; std::unique_ptr<SA> s1, s2, s3, s4; std::unique_ptr<CA> c1, c2;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> c3;
 };
 
 /// Drag this button into the DAW to drop the current song as a MIDI file; click to save it.
@@ -81,7 +84,8 @@ private:
 class InspirePanel : public juce::Component, private juce::Timer {
 public:
     explicit InspirePanel(ChordPilotProcessor& p);
-    ~InspirePanel() override { stopTimer(); }
+    ~InspirePanel() override { stopTimer(); setLookAndFeel(nullptr); }
+    juce::SharedResourcePointer<AuroraLookAndFeel> lnf;
     void paint(juce::Graphics&) override;
     void resized() override;
 private:
@@ -126,6 +130,10 @@ private:
     juce::ToggleButton minorToggle { "Minore" }, synthToggle { "Piano interno" }, syncToggle { "Sync DAW" }, italianToggle { "Do Re Mi" };
     juce::TextButton playButton { "Genre Player" }, newSongButton { "Nuova canzone" }, geniusButton { "Modalita Genio" }, octDown { "<" }, octUp { ">" };
     juce::TextButton proButton { "Pro" }, inspireButton { "Ispirazione" };
+    juce::TextButton easyButton { "Avanzata" }, helpButton { "?" }, modeButton { "Accordi" };
+    juce::TooltipWindow tooltips { this, 600 };
+    void applyEasy();
+    bool easyShown = false;
     juce::ToggleButton handsToggle { "Due mani" }, notesToggle { "Solo note" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> handsA, notesA;
     MidiDragButton midiButton { proc };

@@ -76,7 +76,7 @@ void KeyboardView::paint(juce::Graphics& g) {
         if (held.count(n)) base = base.interpolatedWith(teal, 0.35f);
         g.setColour(base); g.fillRoundedRectangle(r, black ? 5.0f : 7.0f);
         auto it = highlights.find(n);
-        if (it != highlights.end()) {
+        if (it != highlights.end() && !easyView) {
             int role = it->second.role;
             juce::Colour c = role == 4 ? green : role == 3 ? violet : role == 2 ? cyan : juce::Colours::transparentBlack;
             float a = role == 4 ? 0.95f : role == 3 ? (it->second.rank == 1 ? 0.65f : 0.45f) : role == 2 ? 0.55f : 0.0f;
@@ -168,6 +168,7 @@ void SuggestionCard::paint(juce::Graphics& g) {
 
 // ---------------------------------------------------------------- Pro panel
 ProPanel::ProPanel(ChordPilotProcessor& p) {
+    setLookAndFeel(&lnf.get());
     auto setup = [this](juce::Slider& s, juce::Label& l, const char* text, const char* suffix) {
         s.setSliderStyle(juce::Slider::LinearHorizontal);
         s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 64, 22);
@@ -181,6 +182,10 @@ ProPanel::ProPanel(ChordPilotProcessor& p) {
     setup(swing, swingL, "Swing Genre Player", " %");
     setup(transpose, transposeL, "Trasponi tastiera", "");
     for (auto* v : cp::kVoicingStyles) voicing.addItem(juce::String("Voicing: ") + v, voicing.getNumItems() + 1);
+    // Two hands: one item per note of the parameter range (36...84) so the attachment maps 1:1.
+    for (int n = 36; n <= 84; ++n)
+        splitBox.addItem("Due mani: destra dal " + juce::String(cp::kItalian[n % 12]) + juce::String(n / 12 - 1), n - 35);
+    addAndMakeVisible(splitBox);
     midiChan.addItem("Uscita MIDI: canali separati", 1);
     for (int c = 1; c <= 16; ++c) midiChan.addItem("Uscita MIDI: tutto sul canale " + juce::String(c), c + 1);
     addAndMakeVisible(oneFinger); addAndMakeVisible(scaleLock); addAndMakeVisible(voicing); addAndMakeVisible(midiChan);
@@ -193,7 +198,8 @@ ProPanel::ProPanel(ChordPilotProcessor& p) {
     s4 = std::make_unique<SA>(s, "transpose", transpose);
     c1 = std::make_unique<CA>(s, "voicing", voicing);
     c2 = std::make_unique<CA>(s, "midichan", midiChan);
-    setSize(440, 340);
+    c3 = std::make_unique<CA>(s, "split", splitBox);
+    setSize(440, 380);
 }
 
 void ProPanel::paint(juce::Graphics& g) {
@@ -212,7 +218,8 @@ void ProPanel::resized() {
     }
     r.removeFromTop(6);
     voicing.setBounds(r.removeFromTop(30)); r.removeFromTop(6);
-    midiChan.setBounds(r.removeFromTop(30));
+    midiChan.setBounds(r.removeFromTop(30)); r.removeFromTop(6);
+    splitBox.setBounds(r.removeFromTop(30));
 }
 
 // ---------------------------------------------------------------- MIDI export
@@ -258,6 +265,7 @@ void MidiDragButton::clicked() {
 
 // ---------------------------------------------------------------- Inspiration
 InspirePanel::InspirePanel(ChordPilotProcessor& p) : proc(p) {
+    setLookAndFeel(&lnf.get());
     for (auto* b : { &rec4, &rec8, &fromPlayer }) addAndMakeVisible(b);
     rec4.getProperties().set("primary", true);
     status.setColour(juce::Label::textColourId, muted);
@@ -379,11 +387,53 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
     melodyBox.getProperties().set("accent", (juce::int64) pink.getARGB());
     newSongButton.getProperties().set("song", true);
     newSongButton.onClick = [this] { proc.newSong(); };
+    // Easy mode: only genre, piano, chords/notes, new song, play and the keyboard; Genius always on.
+    for (auto* b : { &easyButton, &helpButton, &modeButton }) addAndMakeVisible(b);
+    easyButton.getProperties().set("primary", false);
+    modeButton.getProperties().set("genius", true); modeButton.setClickingTogglesState(false);
+    modeButton.setToggleState(true, juce::dontSendNotification);   // always drawn highlighted (it is a switch: Accordi / Note)
+    easyButton.onClick = [this] {
+        auto* p = proc.params.getParameter("easy");
+        p->setValueNotifyingHost(p->getValue() > 0.5f ? 0.0f : 1.0f);
+    };
+    modeButton.onClick = [this] {
+        auto* p = proc.params.getParameter("notesonly");
+        p->setValueNotifyingHost(p->getValue() > 0.5f ? 0.0f : 1.0f);
+    };
+    helpButton.onClick = [this] {
+        auto text = std::make_unique<juce::Label>();
+        text->setText(juce::String::fromUTF8(
+            "COME SI USA\n\n"
+            "1. Scegli il genere e il pianoforte.\n"
+            "2. Tocca tasti a caso: con la Modalita Genio ogni tasto diventa la nota giusta,\n"
+            "    collegata alla precedente, con un accordo da pianista sotto.\n"
+            "3. 'Accordi' / 'Note': ogni tasto suona un accordo o solo la nota.\n"
+            "4. I tasti d'oro suggeriscono la prossima nota (con l'accordo che produrra).\n"
+            "5. 'Nuova canzone': progressione, arpeggio e melodia nuovi, sincronizzati alla DAW.\n\n"
+            "AVANZATA: tonalita, arpeggi, 30 melodie, Due mani, Ispirazione (10 melodie che\n"
+            "seguono la tua traccia), opzioni Pro, trascina il MIDI nella DAW.\n\n"
+            "ALTRI STRUMENTI: usa 'ChordPilot MIDI' prima dello strumento, oppure manda l'uscita\n"
+            "MIDI allo strumento (Pro > Uscita MIDI > Tutto sul canale 1)."), juce::dontSendNotification);
+        text->setColour(juce::Label::textColourId, fg);
+        text->setColour(juce::Label::backgroundColourId, juce::Colour(0xff0d1a3a));
+        text->setJustificationType(juce::Justification::topLeft);
+        text->setSize(560, 330);
+        juce::CallOutBox::launchAsynchronously(std::move(text), helpButton.getBounds(), this);
+    };
+    genreBox.setTooltip("Genere musicale: progressioni, scale e melodie tipiche");
+    pianoBox.setTooltip("Tipo di pianoforte (10 suoni)");
+    geniusButton.setTooltip("Modalita Genio: ogni tasto diventa la nota giusta con l'accordo successivo");
+    modeButton.setTooltip("Ogni tasto suona un accordo (Accordi) o solo la nota (Note)");
+    newSongButton.setTooltip("Nuova progressione, arpeggio e melodia");
+    inspireButton.setTooltip("10 melodie che seguono la tua traccia");
+    midiButton.setTooltip("Trascina nella DAW la canzone come file MIDI");
+    handsToggle.setTooltip("Tastiera divisa: sinistra accordi con il basso, destra melodia");
+    proButton.setTooltip("Opzioni Pro: accordi con un dito, strum, swing, voicing, uscita MIDI...");
     proButton.onClick = [this] {
-        juce::CallOutBox::launchAsynchronously(std::make_unique<ProPanel>(proc), proButton.getScreenBounds(), nullptr);
+        juce::CallOutBox::launchAsynchronously(std::make_unique<ProPanel>(proc), proButton.getBounds(), this);
     };
     inspireButton.onClick = [this] {
-        juce::CallOutBox::launchAsynchronously(std::make_unique<InspirePanel>(proc), inspireButton.getScreenBounds(), nullptr);
+        juce::CallOutBox::launchAsynchronously(std::make_unique<InspirePanel>(proc), inspireButton.getBounds(), this);
     };
     geniusButton.setClickingTogglesState(true);
     geniusButton.getProperties().set("genius", true);
@@ -432,6 +482,7 @@ ChordPilotEditor::ChordPilotEditor(ChordPilotProcessor& p) : AudioProcessorEdito
     octDown.onClick = [this] { keyboard.lowest = std::max(24, keyboard.lowest - 12); recompute(); };
     octUp.onClick = [this] { keyboard.lowest = std::min(84, keyboard.lowest + 12); recompute(); };
 
+    applyEasy();
     setResizable(true, true);
     setResizeLimits(760, 440, 2400, 1400);
     setSize(1100, 690);
@@ -500,6 +551,12 @@ void ChordPilotEditor::timerCallback() {
         if (proc.melodyNotes[(size_t) n] > 0) mel.insert(n);
     }
     if (mel != melody) { melody = mel; keyboard.melody = mel; keyboard.repaint(); }
+    if ((proc.params.getRawParameterValue("easy")->load() > 0.5f) != easyShown) applyEasy();
+    {
+        const bool notes = proc.params.getRawParameterValue("notesonly")->load() > 0.5f;
+        const juce::String t = notes ? "Note" : "Accordi";
+        if (modeButton.getButtonText() != t) modeButton.setButtonText(t);
+    }
     // Pianist mode: gold keys = suggested next notes, labelled with the chord they will produce.
     const bool geniusOn = proc.params.getRawParameterValue("genius")->load() > 0.5f;
     if (geniusOn && (proc.geniusVersion.load() != lastGeniusVersion || keyboard.geniusNext.empty())) {
@@ -540,6 +597,17 @@ void ChordPilotEditor::paint(juce::Graphics& g) {
         }
     // Status
     auto st = statusArea.toFloat();
+    if (easyShown) {
+        g.setColour(muted); g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+        g.drawText("STAI SUONANDO", st.withHeight(14), juce::Justification::left);
+        g.setColour(fg); g.setFont(juce::FontOptions(36.0f, juce::Font::bold));
+        juce::String nowE = result.current ? chordName(*result.current) : juce::String("-");
+        g.drawText(nowE, st.withTrimmedTop(14).withWidth(240), juce::Justification::centredLeft);
+        g.setColour(fg.withAlpha(0.85f)); g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
+        g.drawText(juce::String::fromUTF8("Tocca tasti a caso: ogni nota diventa musica giusta. I tasti d'oro sono un buon prossimo passo."),
+                   st.withTrimmedLeft(260).withTrimmedTop(14), juce::Justification::centredLeft);
+        return;
+    }
     g.setColour(muted); g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
     g.drawText("STAI SUONANDO", st.withHeight(14), juce::Justification::left);
     juce::String now = result.current ? chordName(*result.current) : juce::String("-");
@@ -582,9 +650,45 @@ void ChordPilotEditor::paint(juce::Graphics& g) {
     }
 }
 
+void ChordPilotEditor::applyEasy() {
+    const bool e = proc.params.getRawParameterValue("easy")->load() > 0.5f;
+    easyShown = e;
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &keyBox, &minorToggle, &complexityBox, &bpmSlider, &progressionBox,
+            &synthToggle, &syncToggle, &italianToggle, &handsToggle, &arpBox, &melodyBox, &geniusButton, &proButton,
+            &midiButton, &inspireButton })
+        c->setVisible(!e);
+    for (auto& c : cards) c.setVisible(!e);
+    notesToggle.setVisible(false);              // replaced by the Accordi / Note button
+    easyButton.setButtonText(e ? "Avanzata" : "Facile");
+    keyboard.easyView = e;
+    if (e && proc.params.getRawParameterValue("genius")->load() < 0.5f)
+        if (auto* g = proc.params.getParameter("genius")) g->setValueNotifyingHost(1.0f);
+    resized(); repaint();
+}
+
 void ChordPilotEditor::resized() {
     auto r = getLocalBounds().reduced(16, 12);
+    if (easyShown) {
+        auto top = r.removeFromTop(40);
+        genreBox.setBounds(top.removeFromLeft(220)); top.removeFromLeft(10);
+        pianoBox.setBounds(top.removeFromLeft(260)); top.removeFromLeft(10);
+        modeButton.setBounds(top.removeFromLeft(120)); top.removeFromLeft(10);
+        newSongButton.setBounds(top.removeFromLeft(150));
+        helpButton.setBounds(top.removeFromRight(40)); top.removeFromRight(8);
+        easyButton.setBounds(top.removeFromRight(110)); top.removeFromRight(8);
+        playButton.setBounds(top.removeFromRight(140));
+        r.removeFromTop(10);
+        statusArea = r.removeFromTop(64);
+        playerArea = {};
+        r.removeFromTop(8);
+        octDown.setBounds(r.removeFromLeft(32)); r.removeFromLeft(6);
+        octUp.setBounds(r.removeFromRight(32)); r.removeFromRight(6);
+        keyboard.setBounds(r);
+        return;
+    }
     auto top = r.removeFromTop(36);
+    helpButton.setBounds(top.removeFromRight(36)); top.removeFromRight(6);
+    easyButton.setBounds(top.removeFromRight(96)); top.removeFromRight(6);
     genreBox.setBounds(top.removeFromLeft(170)); top.removeFromLeft(8);
     pianoBox.setBounds(top.removeFromLeft(230)); top.removeFromLeft(8);
     keyBox.setBounds(top.removeFromLeft(160)); top.removeFromLeft(6);
@@ -599,7 +703,7 @@ void ChordPilotEditor::resized() {
     syncToggle.setBounds(second.removeFromLeft(100));
     italianToggle.setBounds(second.removeFromLeft(100));
     handsToggle.setBounds(second.removeFromLeft(110));
-    notesToggle.setBounds(second.removeFromLeft(110));
+    modeButton.setBounds(second.removeFromLeft(100));
     r.removeFromTop(8);
     auto third = r.removeFromTop(30);
     arpBox.setBounds(third.removeFromLeft(200)); third.removeFromLeft(8);

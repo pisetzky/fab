@@ -18,6 +18,8 @@ Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
+LicenseFile=mac-resources\license.txt
+UninstallDisplayName=ChordPilot
 DisableProgramGroupPage=yes
 
 [Languages]

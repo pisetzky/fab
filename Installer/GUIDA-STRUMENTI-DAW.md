@@ -11,17 +11,7 @@ Nel pacchetto ci sono due versioni del plug-in:
 - **ChordPilot**: strumento con il suo pianoforte + uscita MIDI.
 - **ChordPilot MIDI**: effetto MIDI senza audio, da mettere *prima* dello strumento.
 
-## iPad
-| App | Come fare |
-|---|---|
-| **Logic Pro per iPad** | Traccia dello strumento → *MIDI FX* → Audio Units → **ChordPilot MIDI** |
-| **GarageBand** | Usa *ChordPilot* come strumento; per pilotare un'altra traccia usa AUM o la porta virtuale "ChordPilot Out" |
-| **AUM** | Canale MIDI: **ChordPilot MIDI**, poi nella *MIDI Routing* collega "ChordPilot MIDI" allo strumento |
-| **Cubasis** | Traccia strumento → *MIDI FX* → **ChordPilot MIDI** |
-| **Loopy Pro / Drambo / BeatMaker** | Carica **ChordPilot MIDI** come effetto MIDI e collega la sua uscita allo strumento |
-| **App synth standalone** | Apri l'app ChordPilot: invia MIDI dalla porta virtuale **ChordPilot Out**, selezionala come ingresso nel synth |
-
-## Mac / Windows / Linux
+## Le DAW principali
 | DAW | Come fare |
 |---|---|
 | **Logic Pro / MainStage** | Canale dello strumento → slot *MIDI FX* → Audio Units → Fab Audio → **ChordPilot MIDI** |

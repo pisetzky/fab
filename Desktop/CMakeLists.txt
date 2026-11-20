@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22)
 project(ChordPilot VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Windows: link the C/C++ runtime statically, so customers do not need the Visual C++ Redistributable.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # JUCE: pass -DJUCE_DIR=/path/to/JUCE to use a local copy, otherwise it is downloaded.
 if(DEFINED JUCE_DIR)
@@ -23,6 +25,9 @@ juce_add_plugin(ChordPilot
     PLUGIN_CODE Chpd
     FORMATS ${CP_FORMATS}
     PRODUCT_NAME "ChordPilot"
+    VERSION 1.0.0
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
+    COMPANY_COPYRIGHT "Copyright 2026 Fab Audio"
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT TRUE
@@ -62,6 +67,9 @@ juce_add_plugin(ChordPilotMIDI
     PLUGIN_CODE Chpm
     FORMATS ${CP_MIDI_FORMATS}
     PRODUCT_NAME "ChordPilot MIDI"
+    VERSION 1.0.0
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
+    COMPANY_COPYRIGHT "Copyright 2026 Fab Audio"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT TRUE
