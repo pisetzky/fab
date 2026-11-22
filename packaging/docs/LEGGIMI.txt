@@ -97,11 +97,17 @@ COME SI USA
   quando il loro segnale cambia.
 - L'app si aggiorna da sola: prezzi ogni 5 minuti, notizie ogni 30 minuti.
 
-Analisi AI (facoltativa): apri il riquadro "Analisi AI con ricerca web" e inserisci
-una tua chiave API Anthropic (si crea su console.anthropic.com). L'AI cercherà da
-sola sul web le notizie del giorno ogni 3 ore. Il costo, di pochi centesimi a
-ricerca, è addebitato sul tuo account Anthropic. La chiave resta solo sul tuo
-computer.
+Analisi AI (facoltativa, consigliata): apri il riquadro "Analisi AI con ricerca
+web" e inserisci una tua chiave API Anthropic (si crea su console.anthropic.com).
+Ogni 3 ore l'AI cerca da sola sul web le notizie del giorno e:
+  1) dà un punteggio di rischio a ogni tema (guerre, tassi, petrolio, Nasdaq...);
+  2) vota COMPRA o VENDI per le prime 25 monete e per le tue preferite, con la sua
+     sicurezza, la previsione a 7 giorni e il motivo.
+Il voto AI entra nel segnale finale con il peso che scegli (0%, 25%, 40% o 60%;
+consigliato 40%) e conta sempre meno man mano che l'analisi invecchia. Su ogni
+scheda vedi il voto dell'AI e se è in disaccordo con i calcoli; toccando la
+moneta leggi il motivo. Il costo, di pochi centesimi a ricerca, è addebitato sul
+tuo account Anthropic. La chiave resta solo sul tuo computer.
 
 
 PRIVACY

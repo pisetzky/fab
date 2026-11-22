@@ -1,4 +1,4 @@
-﻿AURORA SIGNAL 1.0.2
+﻿AURORA SIGNAL 1.0.3
 Segnali COMPRA / VENDI per le criptovalute, con obiettivo di vendita e data stimata
 ==================================================================================
 
@@ -11,8 +11,8 @@ e entro quale data, tenendo conto di mercati, materie prime e notizie mondiali.
 
 CONTENUTO DELLA CARTELLA
 ------------------------
-  Mac/        Aurora-Signal-1.0.2.dmg           installazione automatica per Mac
-  Windows/    Aurora-Signal-Setup-1.0.2.exe     installazione automatica per Windows
+  Mac/        Aurora-Signal-1.0.3.dmg           installazione automatica per Mac
+  Windows/    Aurora-Signal-Setup-1.0.3.exe     installazione automatica per Windows
               Aurora-Signal-Windows-Portatile.zip  versione senza installazione
   Linux/      aurora-signal-linux.tar.gz           per Linux
   Web/        Aurora Signal.html                   si apre in qualsiasi browser, anche su
@@ -23,7 +23,7 @@ CONTENUTO DELLA CARTELLA
 
 INSTALLAZIONE SU MAC
 --------------------
-1. Apri il file  Mac/Aurora-Signal-1.0.2.dmg  con un doppio clic.
+1. Apri il file  Mac/Aurora-Signal-1.0.3.dmg  con un doppio clic.
 2. Nella finestra che si apre fai doppio clic su "Aurora Signal".
 3. L'app si copia da sola nella cartella Applicazioni e si apre.
    Fatto! Da ora la trovi in Applicazioni e nel Launchpad.
@@ -46,7 +46,7 @@ in poi.
 
 INSTALLAZIONE SU WINDOWS
 ------------------------
-1. Fai doppio clic su  Windows/Aurora-Signal-Setup-1.0.2.exe
+1. Fai doppio clic su  Windows/Aurora-Signal-Setup-1.0.3.exe
 2. Premi Avanti, accetta la licenza e premi Installa. Non servono permessi di
    amministratore.
 3. Trovi l'icona "Aurora Signal" sul desktop e nel menu Start.
@@ -97,11 +97,17 @@ COME SI USA
   quando il loro segnale cambia.
 - L'app si aggiorna da sola: prezzi ogni 5 minuti, notizie ogni 30 minuti.
 
-Analisi AI (facoltativa): apri il riquadro "Analisi AI con ricerca web" e inserisci
-una tua chiave API Anthropic (si crea su console.anthropic.com). L'AI cercherà da
-sola sul web le notizie del giorno ogni 3 ore. Il costo, di pochi centesimi a
-ricerca, è addebitato sul tuo account Anthropic. La chiave resta solo sul tuo
-computer.
+Analisi AI (facoltativa, consigliata): apri il riquadro "Analisi AI con ricerca
+web" e inserisci una tua chiave API Anthropic (si crea su console.anthropic.com).
+Ogni 3 ore l'AI cerca da sola sul web le notizie del giorno e:
+  1) dà un punteggio di rischio a ogni tema (guerre, tassi, petrolio, Nasdaq...);
+  2) vota COMPRA o VENDI per le prime 25 monete e per le tue preferite, con la sua
+     sicurezza, la previsione a 7 giorni e il motivo.
+Il voto AI entra nel segnale finale con il peso che scegli (0%, 25%, 40% o 60%;
+consigliato 40%) e conta sempre meno man mano che l'analisi invecchia. Su ogni
+scheda vedi il voto dell'AI e se è in disaccordo con i calcoli; toccando la
+moneta leggi il motivo. Il costo, di pochi centesimi a ricerca, è addebitato sul
+tuo account Anthropic. La chiave resta solo sul tuo computer.
 
 
 PRIVACY

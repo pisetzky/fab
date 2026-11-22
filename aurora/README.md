@@ -17,6 +17,8 @@ Apri `aurora/index.html` nel browser (o pubblicala con GitHub Pages). Non serve 
 - Analisi AI con ricerca web (Claude, chiave API Anthropic personale): parte da sola ogni 3 ore, e subito all'apertura se sono passate più di 3 ore
 
 ## Come calcola il segnale
+Se è inserita la chiave AI, il voto COMPRA/VENDI dell'AI (prime 25 monete + preferite, ogni 3 ore, con ricerca web) entra nel segnale con un peso scelto dall'utente (default 40%) che cala con l'età dell'analisi.
+
 Punteggio tecnico (trend vs EMA50, MACD, momentum 24h, RSI, posizione nel range 7 giorni), fattori della singola moneta (trend 30 giorni, liquidità, token ancora da sbloccare, distanza dal massimo storico, funding dei future, andamento di Bitcoin e dominanza BTC per le altcoin), combinati con l'indice di rischio mondiale. L'affidabilità scende con poca liquidità, molti sblocchi, nel weekend e quando mancano fonti. Obiettivo e data derivano dalla volatilità della moneta.
 
 **Non è consulenza finanziaria.** Le previsioni sono stime statistiche, non certezze.

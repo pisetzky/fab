@@ -115,6 +115,8 @@ input:focus,select:focus{border-color:var(--a-teal)}
 .plan{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:.72rem;color:var(--mute)}
 .plan div{background:rgba(5,11,26,.45);border-radius:8px;padding:6px 8px}
 .plan b{display:block;color:var(--ice);font-size:.85rem;margin-top:2px}
+.aichip{font-size:.74rem;margin:-2px 0 8px;font-weight:600}
+.aichip .dis{color:var(--warn);font-weight:500}
 .weak{position:absolute;top:10px;right:46px;font-size:.65rem;color:var(--warn)}
 
 /* Modal */
@@ -202,9 +204,12 @@ details summary{cursor:pointer;color:var(--mute);font-size:.85rem}
         <div class="ai-row">
           <input type="password" id="aiKey" placeholder="Chiave API Anthropic (sk-ant-…)" autocomplete="off">
           <label class="note"><input type="checkbox" id="aiAuto" checked> in automatico ogni 3 ore</label>
+          <label class="note">peso AI nel segnale
+            <select id="aiWeight"><option value="0">0% (solo informativa)</option><option value="25">25%</option><option value="40">40%</option><option value="60">60%</option></select>
+          </label>
           <button id="aiRun" class="primary">Analizza ora</button>
         </div>
-        <p class="note">La chiave resta solo in questo browser e viene inviata solo ad api.anthropic.com. L'AI cerca sul web le notizie di oggi (guerre, petrolio, gas, grano, Nasdaq, scioperi, aerei, armi, medicina, acqua, meteo) e dà un punteggio di rischio per ognuna, che si somma ai dati automatici. Con la chiave inserita la ricerca parte da sola ogni 3 ore (8 al giorno, qualche centesimo ciascuna sul tuo account Anthropic); se apri l'app dopo più di 3 ore, parte subito.</p>
+        <p class="note">La chiave resta solo in questo browser e viene inviata solo ad api.anthropic.com. L'AI cerca sul web le notizie di oggi e: 1) dà un punteggio di rischio a ogni tema (guerre, tassi, petrolio, Nasdaq…); 2) vota COMPRA o VENDI per le prime 25 monete e per le tue preferite ★, combinando notizie e dati tecnici. Il voto entra nel segnale finale con il peso che scegli (consigliato 40%) e conta sempre meno man mano che l'analisi invecchia. Con la chiave inserita la ricerca parte da sola ogni 3 ore (8 al giorno, qualche centesimo ciascuna sul tuo account Anthropic); se apri l'app dopo più di 3 ore, parte subito.</p>
         <p class="note" id="aiNext" style="color:var(--a-teal)"></p>
         <div class="ai-out" id="aiOut"></div>
       </div>
@@ -235,7 +240,7 @@ details summary{cursor:pointer;color:var(--mute);font-size:.85rem}
   <div class="coins" id="coins"><div class="empty">Carico le criptovalute…</div></div>
 
   <div class="card disclaimer">
-    <b>Importante.</b> Aurora Signal calcola i segnali con formule statistiche (RSI, MACD, medie mobili, volatilità) e un indice di rischio costruito da notizie e mercati. Nessun sistema può prevedere il prezzo delle crypto: gli obiettivi di vendita e le date sono stime di probabilità, non promesse. Non è consulenza finanziaria. Non investire soldi che non puoi permetterti di perdere.
+    <b>Importante.</b> Aurora Signal calcola i segnali con formule statistiche (RSI, MACD, medie mobili, volatilità), un indice di rischio costruito da notizie e mercati e, se attivata, il voto di un'intelligenza artificiale. Nessun sistema può prevedere il prezzo delle crypto: gli obiettivi di vendita e le date sono stime di probabilità, non promesse. Non è consulenza finanziaria. Non investire soldi che non puoi permetterti di perdere.
     L'app si aggiorna da sola: prezzi ogni 5 minuti, notizie mondiali ogni 30 minuti, ricerca AI sul web ogni 3 ore. Funziona finché la pagina è aperta; quando la riapri, recupera subito le ricerche saltate.
   </div>
 </div>
@@ -394,7 +399,12 @@ function analyze(c, risk, ctx = {}){
 
   const macro = clamp((50 - risk)/50, -1, 1);           // rischio mondo alto = vendi
   const betaW = clamp(.25 + volD*4, .25, .45);          // le monete più volatili soffrono di più il rischio
-  const score = clamp((1-betaW)*techAll + betaW*macro, -1, 1);
+  const baseScore = clamp((1-betaW)*techAll + betaW*macro, -1, 1);
+  // Voto dell'AI (se c'è): da -1 (vendi sicuro) a +1 (compra sicuro); conf 50 = nessuna opinione
+  const ai = ctx.aiCoins && ctx.aiCoins[c.id];
+  const aiScore = ai ? (ai.dir === 'compra' ? 1 : -1) * clamp((ai.conf - 50) / 40, 0, 1) : null;
+  const wAI = ai ? (ctx.aiW || 0) : 0;
+  const score = clamp((1 - wAI) * baseScore + wAI * aiScore, -1, 1);
   const a = Math.abs(score);
   const buy = score >= 0;
   const horizon = Math.round(clamp(3 + 12*(1-a), 2, 21));
@@ -404,9 +414,11 @@ function analyze(c, risk, ctx = {}){
   const date = new Date(Date.now() + horizon*864e5);
   // affidabilità: più bassa se poca liquidità, molti token da sbloccare o weekend (meno volumi)
   const wk = [0,6].includes(new Date().getDay());
-  const conf = Math.round(clamp(50 + a*100 - (liq < .01 ? 8 : 0) - (dil < .3 ? 5 : 0) - (wk ? 3 : 0) - (ctx.coverage != null ? (1-ctx.coverage)*10 : 0), 51, 95));
+  // AI d'accordo con i calcoli = più affidabile; in disaccordo = meno
+  const agree = (ai && wAI > 0 && aiScore !== 0) ? ((aiScore > 0) === (baseScore >= 0) ? 5 : -5) : 0;
+  const conf = Math.round(clamp(50 + a*100 + agree - (liq < .01 ? 8 : 0) - (dil < .3 ? 5 : 0) - (wk ? 3 : 0) - (ctx.coverage != null ? (1-ctx.coverage)*10 : 0), 51, 95));
   return {
-    stable:false, score, buy, conf, weak: a < .1,
+    stable:false, score, baseScore, ai, aiScore, wAI, buy, conf, weak: a < .1,
     horizon, move, stop, date, target: buy ? last*(1+move) : last*(1-move),
     stopPrice: buy ? last*(1-stop) : last*(1+stop),
     R, hist, trend, mom24, volD, rangePos, tech, macro, ch30, liq, dil, ath, f, wk,
@@ -639,14 +651,35 @@ async function runAI(){
   const key = $('#aiKey').value.trim();
   if (!key){ $('#aiOut').textContent = 'Inserisci la tua chiave API Anthropic.'; return; }
   try{ localStorage.setItem('aurora.aikey', key); }catch{}
-  $('#aiRun').disabled = true; $('#aiOut').textContent = 'L\'AI sta cercando le notizie di oggi sul web… (30–90 secondi)';
+  $('#aiRun').disabled = true; $('#aiOut').textContent = 'L\'AI sta cercando le notizie di oggi sul web e valutando le monete… (1–3 minuti)';
   setSource('ai','wait','AI');
   const aiF = FACTORS.filter(f => f.q);   // solo i fattori basati su notizie
   const ids = aiF.map(f=>`${f.id} (${f.name})`).join(', ');
-  const tpl = JSON.stringify({scores:aiF.reduce((o,f)=>(o[f.id]=0,o),{}), crypto_bias:'rialzista|ribassista|neutro'});
-  const prompt = `Oggi è ${new Date().toISOString().slice(0,10)}. Cerca sul web le notizie più recenti (ultime 24-48 ore) che possono influenzare i mercati e le criptovalute.
-Valuta il livello di rischio per i mercati da 0 (calmo, positivo) a 100 (rischio estremo) per ciascuna categoria: ${ids}.
-Rispondi in italiano con 4-6 frasi brevi che riassumono i fatti principali di oggi, poi in fondo un unico blocco JSON valido in questo formato esatto:
+  // Monete su cui l'AI dà il suo voto COMPRA/VENDI: le prime per capitalizzazione più le preferite
+  const voteList = aiCoinsToVote();
+  const coinLines = voteList.map(c => {
+    const a = c.a;
+    return `${c.id} | ${c.symbol.toUpperCase()} | ${c.name} | prezzo ${c.current_price} $ | 24h ${fmtPct(c.price_change_percentage_24h||0)} | 7g ${fmtPct(c.price_change_percentage_7d_in_currency||0)} | 30g ${fmtPct(c.price_change_percentage_30d_in_currency||0)} | RSI ${a.R.toFixed(0)} | volatilità giornaliera ${(a.volD*100).toFixed(1)}% | segnale calcoli ${a.baseScore>=0?'COMPRA':'VENDI'} (punteggio ${a.baseScore.toFixed(2)})`;
+  }).join('\n');
+  const tpl = JSON.stringify({
+    scores: aiF.reduce((o,f)=>(o[f.id]=0,o),{}),
+    crypto_bias: 'rialzista|ribassista|neutro',
+    coins: voteList.length ? {[voteList[0].id]: {dir:'compra|vendi', conf:50, move7d:0, why:'motivo in max 20 parole'}} : {}
+  });
+  const prompt = `Oggi è ${new Date().toISOString().slice(0,10)}. Cerca sul web le notizie più recenti (ultime 24-48 ore) che possono influenzare i mercati e le criptovalute, comprese notizie specifiche sulle singole monete elencate sotto (aggiornamenti, hack, ETF, sblocchi di token, cause legali, partnership).
+
+1) Valuta il livello di rischio per i mercati da 0 (calmo, positivo) a 100 (rischio estremo) per ciascuna categoria: ${ids}.
+
+2) Per ciascuna moneta dell'elenco decidi se nei prossimi 7 giorni conviene COMPRARE o VENDERE, combinando notizie, clima di mercato e dati tecnici forniti.
+- dir: "compra" o "vendi"
+- conf: quanto sei sicuro, da 50 (non lo so, testa o croce) a 90 (molto sicuro). Sii prudente e realistico: i prezzi delle crypto sono in gran parte imprevedibili, quindi usa valori alti solo con motivi forti e concreti.
+- move7d: variazione di prezzo che ti aspetti in 7 giorni, in percentuale (negativa se ribasso)
+- why: il motivo principale, massimo 20 parole, in italiano
+
+Monete (id | simbolo | nome | dati):
+${coinLines || '(nessuna)'}
+
+Rispondi in italiano con 4-6 frasi brevi che riassumono i fatti principali di oggi, poi in fondo un unico blocco JSON valido in questo formato (in "coins" una voce per ogni id dell'elenco):
 ${tpl}`;
   try{
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -661,9 +694,9 @@ ${tpl}`;
       body: JSON.stringify({
         model:'claude-opus-5-5',
         max_tokens:16000,
-        output_config:{effort:'low'},
+        output_config:{effort:'medium'},
         fallbacks:'default',
-        tools:[{type:'web_search_20260209', name:'web_search', max_uses:12}],
+        tools:[{type:'web_search_20260209', name:'web_search', max_uses:15}],
         messages:[{role:'user', content:prompt}]
       })
     });
@@ -676,16 +709,38 @@ ${tpl}`;
     const parsed = JSON.parse(m[0]);
     const scores = {};
     for (const [k,v] of Object.entries(parsed.scores||{})) if (isFinite(+v)) scores[k] = clamp(+v,0,100);
-    S.ai = {scores, bias: parsed.crypto_bias, at: Date.now(), text: text.replace(m[0],'').trim()};
+    const coins = {};
+    for (const [id, v] of Object.entries(parsed.coins || {})){
+      const dir = String(v && v.dir || '').toLowerCase();
+      if (dir !== 'compra' && dir !== 'vendi') continue;
+      coins[id] = {dir, conf: clamp(+v.conf || 50, 50, 95), move7d: isFinite(+v.move7d) ? +v.move7d : null, why: String(v.why || '').slice(0, 160)};
+    }
+    S.ai = {scores, coins, bias: parsed.crypto_bias, at: Date.now(), text: text.replace(m[0],'').trim()};
     save('aurora.ai', S.ai);
-    renderAI(); setSource('ai','ok','AI'); computeRisk();
+    renderAI(); setSource('ai','ok','AI'); computeRisk();   // ricalcola rischio e segnali con il voto AI
   }catch(e){
     $('#aiOut').textContent = 'Errore AI: ' + e.message; setSource('ai','ko','AI');
   }finally{ $('#aiRun').disabled = false; renderSchedule(); }
 }
+const AI_VOTE_TOP = 25;
+function aiCoinsToVote(){
+  const ok = c => c.a && !c.a.stable;
+  const top = S.coins.filter(ok).slice(0, AI_VOTE_TOP);
+  const fav = S.coins.filter(c => ok(c) && S.stars.has(c.id) && !top.includes(c)).slice(0, 15);
+  return top.concat(fav);
+}
+// Peso del voto AI nel segnale finale: scelto dall'utente, e cala man mano che l'analisi invecchia (a zero dopo 12 ore)
+function aiWeight(){
+  if (!S.ai || !S.ai.coins) return 0;
+  const age = (Date.now() - S.ai.at) / 3600e3;
+  const fresh = clamp(1 - Math.max(0, age - 3) / 9, 0, 1);
+  return (+load('aurora.aiWeight', 40) / 100) * fresh;
+}
 function renderAI(){
   if (!S.ai) return;
-  $('#aiOut').innerHTML = `<b>Ultima analisi: ${new Date(S.ai.at).toLocaleString('it-IT')}</b> · bias crypto: <b>${esc(S.ai.bias||'–')}</b>\n\n${esc(S.ai.text)}`;
+  const v = Object.values(S.ai.coins || {});
+  const votes = v.length ? ` · voti AI: <span class="up">${v.filter(x=>x.dir==='compra').length} compra</span>, <span class="dn">${v.filter(x=>x.dir==='vendi').length} vendi</span>` : '';
+  $('#aiOut').innerHTML = `<b>Ultima analisi: ${new Date(S.ai.at).toLocaleString('it-IT')}</b> · bias crypto: <b>${esc(S.ai.bias||'–')}</b>${votes}\n\n${esc(S.ai.text)}`;
 }
 
 /* ================= Coins ================= */
@@ -742,7 +797,7 @@ async function refreshCoins(){
 
 function recomputeSignals(){
   const risk = S.globalRisk ?? 50;
-  const ctx = {funding: S.funding, domTrend: S.domTrend, coverage: S.coverage};
+  const ctx = {funding: S.funding, domTrend: S.domTrend, coverage: S.coverage, aiCoins: S.ai && S.ai.coins, aiW: aiWeight()};
   const btc = S.coins.find(c => c.symbol === 'btc');
   if (btc){ const b = analyze(btc, risk, ctx); ctx.btcTech = b.stable ? 0 : b.tech; }
   S.coins.forEach(c => { c.a = analyze(c, risk, ctx); });
@@ -862,6 +917,7 @@ function renderCoins(){
       ${a.weak ? '<span class="weak">segnale debole</span>' : ''}
       ${head}
       <div class="sig"><span class="badge ${a.buy?'buy':'sell'}">${a.buy?'COMPRA':'VENDI'}</span><div class="conf">affidabilità<b class="mono">${a.conf}%</b></div></div>
+      ${a.ai ? `<div class="aichip ${a.ai.dir==='compra'?'up':'dn'}" title="${esc(a.ai.why)}">🤖 AI: ${a.ai.dir.toUpperCase()} ${a.ai.conf}%${(a.ai.dir==='compra') !== a.buy ? ' <span class="dis">· in disaccordo</span>' : ''}</div>` : ''}
       <div class="price"><span class="p mono">${fmtP(c.current_price)}</span><span class="chg mono ${ch>=0?'up':'dn'}">${fmtPct(ch)} 24h</span></div>
       ${sparkSVG(a.p, a.buy)}
       <div class="plan">
@@ -890,6 +946,8 @@ function openCoin(id){
   if (a.f != null) reasons.push(`Funding future ${(a.f*100).toFixed(4)}%: ${a.f*1e4 > 2 ? 'troppi acquisti a leva, rischio di liquidazioni' : a.f < 0 ? 'prevalgono le scommesse al ribasso (possibile rimbalzo)' : 'leva nella norma'}`);
   if (c.symbol !== 'btc') reasons.push(`Bitcoin ${P.sBTC >= 0 ? 'in salute: aiuta' : 'debole: frena'} le altcoin${P.sDom ? (P.sDom > 0 ? ' · dominanza BTC in calo (favorevole)' : ' · dominanza BTC in salita (sfavorevole)') : ''}`);
   if (a.wk) reasons.push('Weekend: volumi più bassi, affidabilità leggermente ridotta');
+  if (a.ai) reasons.unshift(`🤖 Parere AI: ${a.ai.dir.toUpperCase()} (sicurezza ${a.ai.conf}%${a.ai.move7d != null ? `, previsione 7 giorni ${fmtPct(a.ai.move7d)}` : ''}): ${a.ai.why}. Peso nel segnale: ${Math.round(a.wAI*100)}%. Senza AI sarebbe ${a.baseScore >= 0 ? 'COMPRA' : 'VENDI'}.`);
+  else if (S.ai && S.ai.coins) reasons.push('🤖 L\'AI non ha valutato questa moneta (valuta le prime 25 e le preferite ★)');
   reasons.push(`Ciclo halving: ${S.riskDetail.cycle || '–'}`);
   reasons.push(`Rischio mondo ${Math.round(S.globalRisk ?? 50)}/100 (${riskLabel(S.globalRisk ?? 50)}): ${a.macro >= 0 ? 'aiuta' : 'frena'} le crypto`);
   const top = FACTORS.map(f => ({f, v: +($('#f-'+f.id+' .v')?.textContent)})).filter(x=>isFinite(x.v)).sort((x,y)=>y.v-x.v).slice(0,3);
@@ -910,7 +968,7 @@ function openCoin(id){
       <div><span>Volatilità giornaliera</span><b class="mono">${(a.volD*100).toFixed(1)}%</b></div>
     </div>
     <div class="kv">
-      ${meter('Trend', P.sTrend)}${meter('Slancio MACD', P.sMACD)}${meter('Momentum 24h', P.sMom)}${meter('RSI (contrarian)', P.sRSI)}${meter('Trend 30 giorni', P.s30)}${meter('Liquidità', P.sLiq)}${meter('Sblocchi token', P.sDil)}${meter('Leva / funding', P.sFund)}${c.symbol!=='btc'?meter('Effetto Bitcoin', P.sBTC):''}${meter('Rischio mondo', a.macro)}${meter('Punteggio finale', a.score)}
+      ${meter('Trend', P.sTrend)}${meter('Slancio MACD', P.sMACD)}${meter('Momentum 24h', P.sMom)}${meter('RSI (contrarian)', P.sRSI)}${meter('Trend 30 giorni', P.s30)}${meter('Liquidità', P.sLiq)}${meter('Sblocchi token', P.sDil)}${meter('Leva / funding', P.sFund)}${c.symbol!=='btc'?meter('Effetto Bitcoin', P.sBTC):''}${meter('Rischio mondo', a.macro)}${a.ai ? meter('Voto AI', a.aiScore) : ''}${meter('Punteggio finale', a.score)}
     </div>
     <h2 style="font-size:.8rem;letter-spacing:2px;text-transform:uppercase;color:var(--mute);font-weight:500">Perché</h2>
     <ul class="why">${reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>
@@ -976,12 +1034,14 @@ $('#btnNotify').addEventListener('click', async () => {
 });
 $('#aiRun').addEventListener('click', runAI);
 $('#aiAuto').addEventListener('change', e => { save('aurora.aiAuto', e.target.checked); renderSchedule(); });
+$('#aiWeight').addEventListener('change', e => { save('aurora.aiWeight', +e.target.value); recomputeSignals(); });
 $('#aiKey').addEventListener('change', () => { try{ localStorage.setItem('aurora.aikey', $('#aiKey').value.trim()); }catch{} renderSchedule(); if (aiDue()) runAI(); });
 
 /* ================= Boot ================= */
 (async function boot(){
   try{ const k = localStorage.getItem('aurora.aikey'); if (k) $('#aiKey').value = k; }catch{}
   $('#aiAuto').checked = load('aurora.aiAuto', true);
+  $('#aiWeight').value = String(load('aurora.aiWeight', 40));
   const ai = load('aurora.ai', null);
   if (ai && Date.now() - ai.at < 24*3600e3){ S.ai = ai; renderAI(); setSource('ai','ok','AI'); }
   if ('Notification' in window && Notification.permission === 'granted') $('#btnNotify').textContent = '🔔 Avvisi attivi';
