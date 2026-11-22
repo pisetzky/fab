@@ -24,7 +24,7 @@ capitale investito. Ogni decisione di investimento è presa da te, sotto la tua
 esclusiva responsabilità.
 
 5. SERVIZI DI TERZI
-Il Software usa dati di servizi esterni (es. CoinGecko, GDELT, Stooq, Open-Meteo,
+Il Software usa dati di servizi esterni (es. CoinGecko, GDELT, Open-Meteo,
 alternative.me, Binance, Anthropic). Il titolare non controlla tali servizi e non
 garantisce che siano sempre disponibili, corretti o aggiornati. L'uso facoltativo
 dell'analisi AI richiede una chiave API personale; i relativi costi sono a tuo

@@ -8,7 +8,8 @@ Apri `aurora/index.html` nel browser (o pubblicala con GitHub Pages). Non serve 
 ## Fonti controllate in automatico
 - Prezzi crypto (top 100/250), capitalizzazione totale, dominanza BTC: CoinGecko, ogni 5 minuti
 - Leva sui future (funding rate): Binance
-- Nasdaq, S&P 500, VIX, dollaro (DXY), rendimento USA 10 anni, petrolio, gas, oro, argento, rame, grano, mais: Stooq
+- Nasdaq, S&P 500, VIX, dollaro (EUR/USD), bond USA a 20 anni, petrolio, gas, oro, argento, rame: versioni tokenizzate quotate su CoinGecko (nel weekend, a borse chiuse, il loro peso si dimezza)
+- Gli asset tokenizzati (fondi, titoli di Stato, prestiti, azioni, oro) sono esclusi dalla lista: non sono criptovalute
 - Tono delle notizie mondiali su 32 temi, ogni 30 minuti (GDELT): crypto, regolamentazione, hack, ETF, tassi e banche centrali, inflazione, dollaro, lavoro e recessione, banche e debito, tech e chip, borse, rendimenti, petrolio, gas, oro, metalli, cibo, elettricità, guerre, armi e nucleare, terrorismo, dazi e sanzioni, elezioni, Cina e Taiwan, cyberattacchi, scioperi, aerei, navi e trasporti, meteo, terremoti, epidemie, acqua
 - Ciclo dell'halving di Bitcoin (tendenza storica)
 - Meteo estremo nelle aree chiave (Midwest USA, Ucraina, Brasile, Golfo del Messico, Suez, Nord Europa): Open-Meteo

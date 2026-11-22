@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#050b1a">
 <title>Aurora Signal</title>
-<meta name="version" content="1.0.1">
+<meta name="version" content="1.0.2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -190,7 +190,7 @@ details summary{cursor:pointer;color:var(--mute);font-size:.85rem}
     <div class="card sec">
       <h2>Cosa sto monitorando</h2>
       <div id="factors"></div>
-      <p class="note" style="margin:10px 0 0">Ogni riquadro: 0 = calmo, 100 = rischio massimo. Fonti: tono delle notizie mondiali su 32 temi (GDELT), Nasdaq, S&amp;P 500, VIX, dollaro, rendimenti USA e materie prime (Stooq), mercato crypto globale (CoinGecko), leva sui future (Binance), meteo estremo nelle aree chiave (Open‑Meteo), Fear &amp; Greed, ciclo dell'halving, analisi AI facoltativa. I pesi si ribilanciano da soli se una fonte non risponde.</p>
+      <p class="note" style="margin:10px 0 0">Ogni riquadro: 0 = calmo, 100 = rischio massimo. Fonti: tono delle notizie mondiali su 32 temi (GDELT), Nasdaq, S&amp;P 500, VIX, dollaro, bond USA, petrolio, gas, oro, argento e rame tramite le loro versioni tokenizzate (CoinGecko), mercato crypto globale (CoinGecko), leva sui future (Binance), meteo estremo nelle aree chiave (Open‑Meteo), Fear &amp; Greed, ciclo dell'halving, analisi AI facoltativa. I pesi si ribilanciano da soli se una fonte non risponde.</p>
     </div>
   </div>
 
@@ -232,6 +232,7 @@ details summary{cursor:pointer;color:var(--mute);font-size:.85rem}
     </select>
   </div>
 
+  <div class="note" id="hiddenNote" style="margin:-4px 0 10px"></div>
   <div class="coins" id="coins"><div class="empty">Carico le criptovalute…</div></div>
 
   <div class="card disclaimer">
@@ -304,7 +305,7 @@ const FACTORS = [
   { id: "med", g: "nature", name: "Medicina e epidemie", icon: "\u{1F48A}", w: 0.04, q: '(pandemic OR outbreak OR epidemic OR virus OR "drug shortage")' },
   { id: "water", g: "nature", name: "Acqua", icon: "\u{1F4A7}", w: 0.02, q: '("water shortage" OR "water crisis" OR dam OR "water supply")' }
 ];
-const SYM_LABEL = { "^ndq": "Nasdaq", "^spx": "S&P", "dx.f": "DXY", "10usy.b": "10Y", "cl.f": "WTI", "ng.f": "Gas", "gc.f": "Oro", "si.f": "Argento", "hg.f": "Rame", "zw.f": "Grano", "zc.f": "Mais" };
+const SYM_LABEL = { ndq: "Nasdaq", spx: "S&P 500", vix: "VIX", tlt: "Bond USA 20a", eur: "EUR/USD", oil: "Petrolio", gas: "Gas", gold: "Oro", silv: "Argento", cu: "Rame" };
 const HALVING = Date.UTC(2024, 3, 20);
 const S = {
   coins: [],
@@ -493,18 +494,46 @@ async function gdeltHeadlines() {
   const j = await getJSON("".concat(GDELT, "?query=").concat(encodeURIComponent(q), "&mode=artlist&maxrecords=25&sort=datedesc&timespan=1d&format=json"));
   return (j.articles || []).map((a) => ({ t: a.title, u: a.url, s: a.domain }));
 }
-async function stooqQuotes() {
-  const syms = ["^ndq", "^spx", "^vix", "dx.f", "10usy.b", "cl.f", "ng.f", "gc.f", "si.f", "hg.f", "zw.f", "zc.f"];
-  const url = "https://stooq.com/q/l/?s=" + syms.map(encodeURIComponent).join("+") + "&f=sd2t2ohlc&h&e=csv";
-  const r = await fetchT(url);
-  if (!r.ok) throw new Error(r.status);
-  const txt = await r.text();
-  const out = {};
-  txt.trim().split("\n").slice(1).forEach((line) => {
-    const [sym, , , o, , , c] = line.split(",");
-    const O = parseFloat(o), C = parseFloat(c);
-    if (O > 0 && C > 0) out[sym.toLowerCase()] = { price: C, chg: (C / O - 1) * 100 };
-  });
+const MARKET_TOKENS = {
+  ndq: ["nasdaq-xstock", "invesco-qqq-etf-ondo-tokenized-etf"],
+  // Nasdaq 100 (QQQ)
+  spx: ["sp500-xstock", "spdr-s-p-500-etf-ondo-tokenized-etf"],
+  // S&P 500 (SPY)
+  vix: ["proshares-ultra-vix-short-term-futures-etf-bstocks-tokenized-etf"],
+  // VIX a leva 1,5x (UVXY)
+  tlt: ["ishares-20-year-treasury-bond-etf-ondo-tokenized-etf"],
+  // Titoli di Stato USA 20+ anni
+  eur: ["euro-coin"],
+  // EURC = cambio euro/dollaro
+  oil: ["united-states-oil-fund-ondo-tokenized"],
+  // Petrolio WTI (USO)
+  gas: ["us-natural-gas-fund-ondo-tokenized"],
+  // Gas naturale (UNG)
+  gold: ["tether-gold", "pax-gold"],
+  // Oro
+  silv: ["ishares-silver-trust-ondo-tokenized-stock", "kinesis-silver"],
+  // Argento
+  cu: ["global-x-copper-miners-etf-ondo-tokenized-etf"]
+  // Rame (minatori, COPX)
+};
+async function marketQuotes() {
+  const ids = [].concat(...Object.values(MARKET_TOKENS));
+  const j = await getJSON("".concat(CG, "/simple/price?ids=").concat(ids.join(","), "&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_last_updated_at=true"));
+  const now = Date.now() / 1e3, out = {};
+  for (const [key, list] of Object.entries(MARKET_TOKENS)) {
+    let w = 0, sum = 0, price = null;
+    for (const id of list) {
+      const q = j[id];
+      if (!q || q.usd_24h_change == null) continue;
+      if (now - (q.last_updated_at || 0) > 6 * 3600) continue;
+      const vol = q.usd_24h_vol || 0;
+      if (vol < 1e3) continue;
+      w += vol;
+      sum += vol * q.usd_24h_change;
+      if (price == null) price = q.usd;
+    }
+    if (w) out[key] = { price, chg: sum / w };
+  }
   if (!Object.keys(out).length) throw new Error("vuoto");
   return out;
 }
@@ -585,6 +614,7 @@ async function refreshWorld() {
   }
 }
 async function refreshWorldInner() {
+  refreshTokenized();
   const R = S.risk, D = S.riskDetail;
   FACTORS.forEach((f) => {
     if (R[f.id] == null) renderFactor(f.id, null, "in attesa\u2026", true);
@@ -600,12 +630,12 @@ async function refreshWorldInner() {
       D.weatherObs = w.hits.length ? "Allerta: " + w.hits.join(", ") : "Aree chiave tranquille";
       setSource("meteo", "ok", "Meteo");
     }).catch(() => setSource("meteo", "ko", "Meteo")),
-    stooqQuotes().then((q) => {
+    marketQuotes().then((q) => {
       S.world = q;
-      setSource("stooq", "ok", "Borse/materie prime");
+      setSource("mkt", "ok", "Borse/materie prime");
     }).catch(() => {
       S.world = null;
-      setSource("stooq", "ko", "Borse/materie prime");
+      setSource("mkt", "ko", "Borse/materie prime");
     }),
     cryptoGlobal().then((g) => {
       R.mktcap = clamp(50 - g.chg * 8, 0, 100);
@@ -656,20 +686,22 @@ function computeRisk() {
   var _a;
   const R = S.risk, D = S.riskDetail, W = S.world, ai = ((_a = S.ai) == null ? void 0 : _a.scores) || {};
   const out = {}, detail = {};
+  const wkd = [0, 6].includes((/* @__PURE__ */ new Date()).getDay()) ? 0.5 : 1;
   const mkt = {
-    nasdaq: [["^ndq", (c) => 50 - c * 15], ["^spx", (c) => 50 - c * 15]],
+    nasdaq: [["ndq", (c) => 50 - c * 15], ["spx", (c) => 50 - c * 15]],
     // borse giù = rischio
-    dollar: [["dx.f", (c) => 50 + c * 20]],
-    // dollaro forte = crypto deboli
-    yields: [["10usy.b", (c) => 50 + c * 5]],
-    // rendimenti su = denaro più caro
-    oil: [["cl.f", (c) => 45 + c * 6]],
-    gas: [["ng.f", (c) => 45 + c * 4]],
-    gold: [["gc.f", (c) => 45 + c * 10], ["si.f", (c) => 45 + c * 5]],
+    vix: [["vix", (c) => 50 + c * 1.5]],
+    // VIX su = paura sulle borse
+    dollar: [["eur", (c) => 50 - c * 20]],
+    // euro giù = dollaro forte = crypto deboli
+    yields: [["tlt", (c) => 50 - c * 8]],
+    // bond giù = rendimenti su = denaro più caro
+    oil: [["oil", (c) => 45 + c * 6]],
+    gas: [["gas", (c) => 45 + c * 4]],
+    gold: [["gold", (c) => 45 + c * 10], ["silv", (c) => 45 + c * 5]],
     // corsa ai beni rifugio = paura
-    metals: [["hg.f", (c) => 50 - c * 8]],
+    metals: [["cu", (c) => 50 - c * 8]]
     // rame giù = timori di recessione
-    food: [["zw.f", (c) => 45 + c * 6], ["zc.f", (c) => 45 + c * 6]]
   };
   const direct = ["fng", "mktcap", "dominance", "leverage", "cycle", "breadth"];
   for (const f of FACTORS) {
@@ -687,17 +719,12 @@ function computeRisk() {
       parts.push(R.weatherObs);
       notes.push(D.weatherObs);
     }
-    if (f.id === "vix" && (W == null ? void 0 : W["^vix"])) {
-      const v = W["^vix"].price;
-      parts.push(clamp((v - 12) * 4, 0, 100));
-      notes.push("VIX ".concat(v.toFixed(1)));
-    }
     if (W && mkt[f.id]) {
       for (const [sym, fn] of mkt[f.id]) {
         const q = W[sym];
         if (!q) continue;
-        parts.push(clamp(fn(q.chg), 0, 100));
-        notes.unshift("".concat(SYM_LABEL[sym] || sym, " ").concat(fmtPct(q.chg, 2)));
+        parts.push(clamp(fn(q.chg * wkd), 0, 100));
+        notes.unshift("".concat(SYM_LABEL[sym] || sym, " ").concat(fmtPct(q.chg, 2)).concat(wkd < 1 ? " (weekend)" : ""));
       }
     }
     if (ai[f.id] != null) {
@@ -809,19 +836,65 @@ function renderAI() {
   if (!S.ai) return;
   $("#aiOut").innerHTML = "<b>Ultima analisi: ".concat(new Date(S.ai.at).toLocaleString("it-IT"), "</b> \xB7 bias crypto: <b>").concat(esc(S.ai.bias || "\u2013"), "</b>\n\n").concat(esc(S.ai.text));
 }
+const TOKENIZED_SEED = [
+  "figure-heloc",
+  "tether-gold",
+  "pax-gold",
+  "kinesis-gold",
+  "kinesis-silver",
+  "ondo-us-dollar-yield",
+  "hashnote-usyc",
+  "spiko-amundi-overnight-swap-fund-eur",
+  "safo",
+  "eutbl",
+  "spiko-us-t-bills-money-market-fund",
+  "blackrock-usd-institutional-digital-liquidity-fund",
+  "superstate-short-duration-us-government-securities-fund-ustb",
+  "janus-henderson-anemoy-aaa-clo-fund",
+  "securitize-tokenized-aaa-clo-fund",
+  "ousg",
+  "theo-short-duration-us-treasury-fund",
+  "alpha-bulgaria-warrants",
+  "onyc",
+  "ylds"
+];
+const TOKENIZED_NAME = /\b(x?stock|rstock|bstocks?|tokenized|etf|fund|treasur(y|ies)|t-?bills?|heloc|clo|money market|bond|sstn|sstl|ssl|warrants?)\b/i;
+S.tokenized = new Set(TOKENIZED_SEED.concat(load("aurora.tokenized", { ids: [] }).ids));
+async function refreshTokenized() {
+  const c = load("aurora.tokenized", null);
+  if (c && Date.now() - c.at < 24 * 36e5) return;
+  try {
+    const ids = [];
+    for (const pg of [1, 2]) {
+      const d = await getJSON("".concat(CG, "/coins/markets?vs_currency=usd&category=tokenized-products&order=market_cap_desc&per_page=250&page=").concat(pg));
+      d.forEach((x) => ids.push(x.id));
+      if (d.length < 250) break;
+      await sleep(1500);
+    }
+    if (ids.length) {
+      save("aurora.tokenized", { at: Date.now(), ids });
+      ids.forEach((id) => S.tokenized.add(id));
+    }
+  } catch (e) {
+  }
+}
+const isTokenized = (c) => S.tokenized.has(c.id) || TOKENIZED_NAME.test(c.name || "");
 async function refreshCoins() {
   setStatus("Aggiorno i prezzi\u2026");
   try {
-    const pages = S.count > 100 ? [1, 2, 3] : [1];
+    const pages = S.count > 100 ? [1, 2] : [1];
+    const per = S.count > 100 ? 250 : 150;
     let all = [];
     for (const pg of pages) {
-      const per = S.count > 100 ? 100 : S.count;
       const data = await getJSON("".concat(CG, "/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=").concat(per, "&page=").concat(pg, "&sparkline=true&price_change_percentage=1h,24h,7d,30d"));
       all = all.concat(data);
-      if (pages.length > 1) await sleep(1200);
+      if (pages.length > 1) await sleep(1500);
     }
-    S.coins = all.slice(0, S.count);
+    const crypto = all.filter((c) => !isTokenized(c));
+    S.hiddenTokenized = all.slice(0, per * pages.length).filter(isTokenized).filter((c) => (c.market_cap_rank || 9999) <= S.count).length;
+    S.coins = crypto.slice(0, S.count);
     setSource("cg", "ok", "Prezzi crypto");
+    $("#hiddenNote").textContent = S.hiddenTokenized ? "".concat(S.hiddenTokenized, " asset tokenizzati (fondi, oro, azioni) esclusi: non sono criptovalute") : "";
     recomputeSignals();
     setStatus("Live \xB7 aggiornato alle " + (/* @__PURE__ */ new Date()).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
@@ -1162,6 +1235,7 @@ $("#aiKey").addEventListener("change", () => {
   }
   if ("Notification" in window && Notification.permission === "granted") $("#btnNotify").textContent = "\u{1F514} Avvisi attivi";
   FACTORS.forEach((f) => renderFactor(f.id, null, "in attesa\u2026", true));
+  await refreshTokenized();
   await refreshCoins();
   refreshWorld();
   S.lastPrice = Date.now();

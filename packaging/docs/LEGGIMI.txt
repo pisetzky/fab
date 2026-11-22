@@ -108,7 +108,7 @@ PRIVACY
 -------
 L'app non ha account e non invia i tuoi dati a noi. Preferiti, impostazioni e
 chiave AI restano salvati solo nel browser del tuo computer. L'app scarica i dati
-pubblici da: CoinGecko, GDELT, Stooq, Open-Meteo, alternative.me, Binance e, solo
+pubblici da: CoinGecko, GDELT, Open-Meteo, alternative.me, Binance e, solo
 se inserisci la chiave, Anthropic.
 
 

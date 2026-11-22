@@ -40,7 +40,7 @@ Per eliminare gli avvisi servono:
 
 **3. Aspetti legali.**
 - Vendere segnali di compravendita può rientrare nella consulenza o raccomandazione di investimento, che in Italia/UE è regolata (CONSOB, MiFID II, MiCA per le cripto-attività). L'app e la licenza dicono chiaramente che non è consulenza finanziaria, ma conviene far verificare a un legale come presentarla e venderla.
-- Alcune fonti dati gratuite hanno limiti per l'uso commerciale (per esempio l'API gratuita di CoinGecko). Controlla i termini d'uso di CoinGecko, Stooq, GDELT, Binance e alternative.me, e valuta un piano a pagamento dove serve.
+- Alcune fonti dati gratuite hanno limiti per l'uso commerciale (per esempio l'API gratuita di CoinGecko). Controlla i termini d'uso di CoinGecko, GDELT, Binance e alternative.me, e valuta un piano a pagamento dove serve.
 - Completa la licenza (`docs/LICENZA.txt`) con il nome del titolare e i dati legali.
 
 **4. Fattura e partita IVA.** Per vendere software servono gli adempimenti fiscali previsti (partita IVA, IVA sui servizi digitali per clienti UE).
