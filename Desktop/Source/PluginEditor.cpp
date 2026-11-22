@@ -188,7 +188,9 @@ ProPanel::ProPanel(ChordPilotProcessor& p) {
     addAndMakeVisible(splitBox);
     midiChan.addItem("Uscita MIDI: canali separati", 1);
     for (int c = 1; c <= 16; ++c) midiChan.addItem("Uscita MIDI: tutto sul canale " + juce::String(c), c + 1);
+   #if ! JUCE_WINDOWS
     addAndMakeVisible(vport);
+   #endif
     vport.setTooltip("Crea l'ingresso MIDI \"ChordPilot\" nella DAW: su una traccia MIDI scegli ChordPilot come ingresso e premi REC. "
                      "Registra tutto quello che esce dal plug-in (note, Genio, Genre Player, Nuova canzone).");
     a3 = std::make_unique<BA>(p.params, "vport", vport);

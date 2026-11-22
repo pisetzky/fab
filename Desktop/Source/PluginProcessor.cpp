@@ -68,10 +68,12 @@ ChordPilotProcessor::ChordPilotProcessor()
     pressedToSounding.fill(-1);
     // Standalone app: publish a virtual MIDI output called "ChordPilot" (macOS / Linux). Every DAW sees it as a
     // MIDI keyboard, so pressing REC on a MIDI track records your notes, the Genius chords and the Genre Player.
+   #if ! JUCE_WINDOWS   // Windows has no virtual MIDI ports (use the plug-in MIDI out or loopMIDI there)
     if (juce::JUCEApplicationBase::isStandaloneApp()) {
         virtualOut = juce::MidiOutput::createNewDevice("ChordPilot");
         virtualOutPtr = virtualOut.get();
     }
+   #endif
     rebuildPattern();
     rebuildGeniusTable();
     startTimerHz(15);
@@ -197,10 +199,12 @@ juce::File ChordPilotProcessor::writePerformanceMidi(const juce::File& dest) {
 void ChordPilotProcessor::timerCallback() {
     drainPerformance();
     // Inside a DAW the virtual port is opened on request (Pro > Porta MIDI virtuale) and kept until the plug-in closes.
+   #if ! JUCE_WINDOWS
     if (!virtualOut && params.getRawParameterValue("vport")->load() > 0.5f) {
         virtualOut = juce::MidiOutput::createNewDevice("ChordPilot");
         virtualOutPtr = virtualOut.get();
     }
+   #endif
     std::array<int, 8> now { genreIndex(), (int) params.getRawParameterValue("key")->load(),
                              (int) params.getRawParameterValue("minor")->load(), (int) params.getRawParameterValue("complexity")->load(),
                              (int) params.getRawParameterValue("progression")->load(), (int) params.getRawParameterValue("arp")->load(),

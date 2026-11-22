@@ -30,12 +30,15 @@ Suggerimento: con **Uscita MIDI → "Canali separati"** puoi mandare accompagnam
 Viene registrato **tutto**: le note che suoni, gli accordi della Modalità Genio, il **Genre Player** e
 **Nuova canzone**, con il tempo della DAW.
 
-**Metodo universale (vale per tutte le DAW, anche Logic)**
+**Metodo universale su Mac e Linux (vale per tutte le DAW, anche Logic)**
 1. In ChordPilot apri **Pro** e attiva **Porta MIDI virtuale "ChordPilot"** (nell'app Standalone è sempre attiva).
 2. Nella DAW crea una nuova traccia MIDI/strumento e come **ingresso MIDI** scegli **ChordPilot**.
 3. Premi **REC** nella DAW e suona (o premi *Genre Player* / *Nuova canzone*): la traccia registra tutto.
 4. Nella traccia dove si trova ChordPilot, imposta l'ingresso sulla tua tastiera e non su "Tutti gli ingressi",
    così le note non tornano indietro a ChordPilot.
+
+Su **Windows** non esistono porte MIDI virtuali di sistema: usa l'uscita MIDI del plug-in (tabella qui sotto)
+oppure, per l'app Standalone, il programma gratuito *loopMIDI* come porta verso la DAW.
 
 **Via uscita MIDI del plug-in (senza porta virtuale)**
 | DAW | Come registrare |
