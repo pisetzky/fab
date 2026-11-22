@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#050b1a">
 <title>Aurora Signal</title>
-<meta name="version" content="1.0.0">
+<meta name="version" content="1.0.1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -352,8 +352,13 @@ function setSource(k, state, label) {
   S.sources[k] = { state, label };
   renderSources();
 }
-async function getJSON(url, opts) {
-  const r = await fetch(url, opts);
+function fetchT(url, opts = {}, ms = 2e4) {
+  const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const t = ctl && setTimeout(() => ctl.abort(), ms);
+  return fetch(url, Object.assign({}, opts, ctl ? { signal: ctl.signal } : {})).finally(() => t && clearTimeout(t));
+}
+async function getJSON(url, opts, ms) {
+  const r = await fetchT(url, opts, ms);
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }
@@ -491,7 +496,9 @@ async function gdeltHeadlines() {
 async function stooqQuotes() {
   const syms = ["^ndq", "^spx", "^vix", "dx.f", "10usy.b", "cl.f", "ng.f", "gc.f", "si.f", "hg.f", "zw.f", "zc.f"];
   const url = "https://stooq.com/q/l/?s=" + syms.map(encodeURIComponent).join("+") + "&f=sd2t2ohlc&h&e=csv";
-  const txt = await (await fetch(url)).text();
+  const r = await fetchT(url);
+  if (!r.ok) throw new Error(r.status);
+  const txt = await r.text();
   const out = {};
   txt.trim().split("\n").slice(1).forEach((line) => {
     const [sym, , , o, , , c] = line.split(",");
@@ -709,10 +716,10 @@ function computeRisk() {
     sv += f.w * out[f.id];
   }
   const total = sw ? sv / sw : 50;
-  S.globalRisk = total;
   S.coverage = sw / FACTORS.reduce((s, f) => s + f.w, 0);
-  renderGauge(total, S.coverage);
+  S.globalRisk = 50 + (total - 50) * clamp(S.coverage / 0.3, 0, 1);
   recomputeSignals();
+  renderGauge(S.globalRisk, S.coverage);
 }
 function aiDue() {
   var _a;
@@ -907,7 +914,7 @@ function renderGauge(v, coverage) {
   $("#gneedle").setAttribute("cy", 105 - 80 * Math.sin(ang));
   $("#gval").textContent = Math.round(v);
   $("#gval").style.color = riskColor(v);
-  $("#glabel").textContent = riskLabel(v) + (v >= 55 ? " \xB7 prudenza" : v <= 40 ? " \xB7 clima favorevole" : "");
+  $("#glabel").textContent = coverage < 0.15 ? "Raccolgo i dati\u2026" : riskLabel(v) + (v >= 55 ? " \xB7 prudenza" : v <= 40 ? " \xB7 clima favorevole" : "");
   const buys = S.coins.filter((c) => c.a && !c.a.stable && c.a.buy).length;
   const sells = S.coins.filter((c) => c.a && !c.a.stable && !c.a.buy).length;
   $("#gmeta").innerHTML = "Copertura dati ".concat(Math.round(coverage * 100), '% \xB7 <span class="up">').concat(buys, ' compra</span> \xB7 <span class="dn">').concat(sells, " vendi</span><br>Prossimo controllo notizie: ").concat(new Date(Date.now() + WORLD_MS).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
